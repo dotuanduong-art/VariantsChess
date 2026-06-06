@@ -16,7 +16,7 @@ import { Color } from 'game-core';
 
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:3000'],
+    origin: true,
     credentials: true,
   },
 })
