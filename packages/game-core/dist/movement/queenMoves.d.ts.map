@@ -1,0 +1,1 @@
+{"version":3,"file":"queenMoves.d.ts","sourceRoot":"","sources":["../../src/movement/queenMoves.ts"],"names":[],"mappings":"AAIA,OAAO,EAAE,KAAK,EAAE,MAAM,gBAAgB,CAAC;AACvC,OAAO,EAAE,QAAQ,EAAE,MAAM,mBAAmB,CAAC;AAC7C,OAAO,EAAE,KAAK,EAAE,MAAM,iBAAiB,CAAC;AAcxC,wBAAgB,aAAa,CAAC,KAAK,EAAE,KAAK,EAAE,GAAG,EAAE,QAAQ,EAAE,KAAK,EAAE,KAAK,GAAG,QAAQ,EAAE,CAEnF"}

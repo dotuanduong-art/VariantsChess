@@ -1,0 +1,1 @@
+{"version":3,"file":"bishopMoves.d.ts","sourceRoot":"","sources":["../../src/movement/bishopMoves.ts"],"names":[],"mappings":"AAIA,OAAO,EAAE,KAAK,EAAE,MAAM,gBAAgB,CAAC;AACvC,OAAO,EAAE,QAAQ,EAAc,MAAM,mBAAmB,CAAC;AACzD,OAAO,EAAE,KAAK,EAAE,MAAM,iBAAiB,CAAC;AAUxC;;;;GAIG;AACH,wBAAgB,cAAc,CAAC,KAAK,EAAE,KAAK,EAAE,GAAG,EAAE,QAAQ,EAAE,KAAK,EAAE,KAAK,GAAG,QAAQ,EAAE,CAepF"}

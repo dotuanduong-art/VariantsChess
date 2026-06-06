@@ -1,0 +1,19 @@
+{
+  "name": "chess-variants-online",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm -w apps/frontend run dev",
+    "dev:backend": "npm -w apps/backend run start:dev",
+    "build": "npm -w packages/game-core run build && npm -w apps/backend run build && npm -w apps/frontend run build",
+    "build:core": "npm -w packages/game-core run build"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
