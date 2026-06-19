@@ -1,0 +1,233 @@
+import { Board, SerializedBoard } from '../board/Board';
+import { Color } from '../pieces/Piece';
+import { MatchStatus } from '../match/Match';
+import { ActionHistory } from '../action/ActionHistory';
+import { GraveyardEntry } from './Graveyard';
+import { Effect } from '../effect/Effect';
+
+export type TurnPhase = 'start' | 'action' | 'resolution' | 'end' | 'cleanup';
+
+export interface SerializedGameState {
+  board: SerializedBoard;
+  currentTurn: Color;
+  turnNumber: number;
+  status: MatchStatus;
+  winner: Color | null;
+  turnPhase: TurnPhase;
+  hasMoved: boolean;
+  skillsUsedThisTurn: number;
+  passSkillSubmitted: boolean;
+  whiteAP: number;
+  blackAP: number;
+  whiteTimeLeft: number;
+  blackTimeLeft: number;
+  lastMoveTimestamp: number;
+  actionHistory: any; // history entry array
+  graveyard: GraveyardEntry[];
+  rngSeed: number;
+  rngCounter: number;
+  whiteVariantId: string | null;
+  blackVariantId: string | null;
+  variantState: Record<string, any>;
+  pendingDeadKings: Color[];
+  whitePlayerEffects: Effect[];
+  blackPlayerEffects: Effect[];
+}
+
+export class GameState {
+  board: Board;
+  currentTurn: Color;
+  turnNumber: number;
+  status: MatchStatus;
+  winner: Color | null;
+
+  // Turn phase tracking (GDD §Turn Structure)
+  turnPhase: TurnPhase;
+  hasMoved: boolean;
+  skillsUsedThisTurn: number;
+  passSkillSubmitted: boolean;
+
+  // AP economy
+  whiteAP: number;
+  blackAP: number;
+
+  // Time
+  whiteTimeLeft: number;
+  blackTimeLeft: number;
+  lastMoveTimestamp: number;
+
+  // History
+  actionHistory: ActionHistory;
+
+  // Graveyard
+  graveyard: GraveyardEntry[];
+
+  // RNG
+  rngSeed: number;
+  rngCounter: number;
+
+  // Variant state
+  whiteVariantId: string | null = null;
+  blackVariantId: string | null = null;
+  variantState: Record<string, any> = {};
+  pendingDeadKings: Color[] = [];
+  whitePlayerEffects: Effect[];
+  blackPlayerEffects: Effect[];
+
+  constructor(rngSeed = Date.now()) {
+    this.board = new Board();
+    this.currentTurn = Color.White;
+    this.turnNumber = 1;
+    this.status = 'waiting';
+    this.winner = null;
+    this.turnPhase = 'start';
+    this.hasMoved = false;
+    this.skillsUsedThisTurn = 0;
+    this.passSkillSubmitted = false;
+    this.whiteAP = 0;
+    this.blackAP = 0;
+    this.whiteTimeLeft = 15 * 60 * 1000;
+    this.blackTimeLeft = 15 * 60 * 1000;
+    this.lastMoveTimestamp = 0;
+    this.actionHistory = new ActionHistory();
+    this.graveyard = [];
+    this.rngSeed = rngSeed;
+    this.rngCounter = 0;
+    this.pendingDeadKings = [];
+    this.whitePlayerEffects = [];
+    this.blackPlayerEffects = [];
+  }
+
+  getPlayerEffects(player: Color): Effect[] {
+    return player === Color.White ? this.whitePlayerEffects : this.blackPlayerEffects;
+  }
+
+  addPlayerEffect(player: Color, effect: Effect): void {
+    const effects = this.getPlayerEffects(player);
+    const existingIdx = effects.findIndex(e => e.type === effect.type);
+    if (existingIdx !== -1) {
+      const existing = effects[existingIdx];
+      if (effect.stackingRule === 'refresh') {
+        existing.remainingDuration = effect.duration;
+      } else if (effect.stackingRule === 'stack') {
+        existing.stackCount = (existing.stackCount || 1) + 1;
+        existing.remainingDuration = effect.duration;
+      }
+    } else {
+      effects.push(effect);
+    }
+  }
+
+  removePlayerEffect(player: Color, effectId: string): void {
+    const effects = player === Color.White ? this.whitePlayerEffects : this.blackPlayerEffects;
+    const idx = effects.findIndex(e => e.id === effectId);
+    if (idx !== -1) {
+      effects.splice(idx, 1);
+    }
+  }
+
+  toSerializable(): SerializedGameState {
+    return {
+      board: this.board.toSerializable(),
+      currentTurn: this.currentTurn,
+      turnNumber: this.turnNumber,
+      status: this.status,
+      winner: this.winner,
+      turnPhase: this.turnPhase,
+      hasMoved: this.hasMoved,
+      skillsUsedThisTurn: this.skillsUsedThisTurn,
+      passSkillSubmitted: this.passSkillSubmitted,
+      whiteAP: this.whiteAP,
+      blackAP: this.blackAP,
+      whiteTimeLeft: this.whiteTimeLeft,
+      blackTimeLeft: this.blackTimeLeft,
+      lastMoveTimestamp: this.lastMoveTimestamp,
+      actionHistory: this.actionHistory.toSerializable(),
+      graveyard: this.graveyard.map(e => ({
+        ...e,
+        piece: { ...e.piece, effects: e.piece.effects ? e.piece.effects.map(eff => ({ ...eff })) : [] },
+      })),
+      rngSeed: this.rngSeed,
+      rngCounter: this.rngCounter,
+      whiteVariantId: this.whiteVariantId,
+      blackVariantId: this.blackVariantId,
+      variantState: { ...this.variantState },
+      pendingDeadKings: [...this.pendingDeadKings],
+      whitePlayerEffects: this.whitePlayerEffects.map(e => ({ ...e })),
+      blackPlayerEffects: this.blackPlayerEffects.map(e => ({ ...e })),
+    };
+  }
+
+  serializeForPlayer(player: Color): SerializedGameState {
+    const serialized = this.toSerializable();
+
+    // Filter cell effects on the board
+    if (serialized.board.cellEffects) {
+      const filteredCellEffects: Record<string, Effect[]> = {};
+      for (const [key, effects] of Object.entries(serialized.board.cellEffects)) {
+        const kept = effects.filter(e => {
+          const isSensitiveType = e.type === 'thunder_trap' || e.type === 'landmine';
+          const isHiddenEffect = e.isHidden === true || isSensitiveType;
+          if (isHiddenEffect && e.sourcePlayer !== player) {
+            return false;
+          }
+          return true;
+        });
+        if (kept.length > 0) {
+          filteredCellEffects[key] = kept;
+        }
+      }
+      serialized.board.cellEffects = filteredCellEffects;
+    }
+
+    // Filter invisible pieces of the opponent on the grid
+    serialized.board.grid = serialized.board.grid.map(row =>
+      row.map(piece => {
+        if (!piece) return null;
+        if (piece.color !== player) {
+          const isInvisible = piece.effects?.some((e: any) =>
+            e.type === 'ghost' ||
+            e.type === 'invisible' ||
+            e.type === 'stealth' ||
+            e.isHidden === true
+          );
+          if (isInvisible) return null;
+        }
+        return piece;
+      })
+    );
+
+    return serialized;
+  }
+
+  static fromSerializable(data: SerializedGameState): GameState {
+    const state = new GameState(data.rngSeed);
+    state.board = Board.fromSerializable(data.board);
+    state.currentTurn = data.currentTurn;
+    state.turnNumber = data.turnNumber;
+    state.status = data.status;
+    state.winner = data.winner;
+    state.turnPhase = data.turnPhase;
+    state.hasMoved = data.hasMoved;
+    state.skillsUsedThisTurn = data.skillsUsedThisTurn;
+    state.passSkillSubmitted = data.passSkillSubmitted;
+    state.whiteAP = data.whiteAP;
+    state.blackAP = data.blackAP;
+    state.whiteTimeLeft = data.whiteTimeLeft;
+    state.blackTimeLeft = data.blackTimeLeft;
+    state.lastMoveTimestamp = data.lastMoveTimestamp;
+    state.actionHistory = ActionHistory.fromSerializable(data.actionHistory);
+    state.graveyard = data.graveyard.map(e => ({
+      ...e,
+      piece: { ...e.piece, effects: e.piece.effects ? e.piece.effects.map(eff => ({ ...eff })) : [] },
+    }));
+    state.rngCounter = data.rngCounter;
+    state.whiteVariantId = data.whiteVariantId;
+    state.blackVariantId = data.blackVariantId;
+    state.variantState = { ...data.variantState };
+    state.pendingDeadKings = data.pendingDeadKings ? [...data.pendingDeadKings] : [];
+    state.whitePlayerEffects = data.whitePlayerEffects ? data.whitePlayerEffects.map(e => ({ ...e })) : [];
+    state.blackPlayerEffects = data.blackPlayerEffects ? data.blackPlayerEffects.map(e => ({ ...e })) : [];
+    return state;
+  }
+}

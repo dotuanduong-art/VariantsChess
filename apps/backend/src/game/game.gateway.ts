@@ -26,6 +26,19 @@ export class GameGateway implements OnGatewayDisconnect {
 
   constructor(private readonly gameService: GameService) {}
 
+  private emitStateToRoom(roomCode: string, event: string, extraData: Record<string, any> = {}): void {
+    const room = this.gameService.getRoom(roomCode);
+    if (!room || !room.match) return;
+
+    for (const player of room.players) {
+      const playerState = room.match.serializeForPlayer(player.color);
+      this.server.to(player.socketId).emit(event, {
+        ...extraData,
+        ...playerState,
+      });
+    }
+  }
+
   private scheduleTurnTimeout(roomCode: string): void {
     const room = this.gameService.getRoom(roomCode);
     if (!room || !room.match) return;
@@ -37,19 +50,34 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
-    const delay = state.currentTurn === Color.White ? state.whiteTimeLeft : state.blackTimeLeft;
+    const matchState = room.match.getGameState();
+    const hasTimeoutOverride = matchState.variantState.turnTimeoutOverride !== undefined && matchState.variantState.turnTimeoutOverride !== null;
+    const delay = hasTimeoutOverride ? room.match.getTurnTimeoutMs() : (state.currentTurn === Color.White ? state.whiteTimeLeft : state.blackTimeLeft);
     
     this.gameService.setTurnTimeout(roomCode, delay, () => {
-      const match = this.gameService.getRoom(roomCode)?.match;
-      if (!match) return;
+      const activeRoom = this.gameService.getRoom(roomCode);
+      if (!activeRoom || !activeRoom.match) return;
       
-      const timeoutWinner = match.checkTimeout();
-      if (timeoutWinner) {
-        this.server.to(roomCode).emit('match-ended', {
-          winner: timeoutWinner,
-          reason: 'Time out',
-        });
-        console.log(`Match ended in room ${roomCode} by timeout. Winner: ${timeoutWinner}`);
+      const activeMatchState = activeRoom.match.getGameState();
+      const activeHasOverride = activeMatchState.variantState.turnTimeoutOverride !== undefined && activeMatchState.variantState.turnTimeoutOverride !== null;
+      if (activeHasOverride) {
+        const currentTurnColor = activeRoom.match.getCurrentTurn();
+        const result = this.gameService.handleTimeoutSkip(roomCode, currentTurnColor);
+        if (result.success) {
+          this.emitStateToRoom(roomCode, 'move-made');
+          this.scheduleTurnTimeout(roomCode);
+        } else {
+          console.error(`Failed to handle timeout skip: ${result.reason}`);
+        }
+      } else {
+        const timeoutWinner = activeRoom.match.checkTimeout();
+        if (timeoutWinner) {
+          this.server.to(roomCode).emit('match-ended', {
+            winner: timeoutWinner,
+            reason: 'Time out',
+          });
+          console.log(`Match ended in room ${roomCode} by timeout. Winner: ${timeoutWinner}`);
+        }
       }
     });
   }
@@ -91,19 +119,23 @@ export class GameGateway implements OnGatewayDisconnect {
       players: result.players?.map(p => ({ id: p.id, color: p.color })),
     });
 
-    // Auto-start match when 2 players are in
-    const startResult = this.gameService.startMatch(data.roomCode);
-    if (startResult.success) {
-      this.server.to(data.roomCode).emit('match-started', {
-        board: startResult.matchState!.board,
-        currentTurn: startResult.matchState!.currentTurn,
-        status: startResult.matchState!.status,
-        whiteTimeLeft: startResult.matchState!.whiteTimeLeft,
-        blackTimeLeft: startResult.matchState!.blackTimeLeft,
-        lastMoveTimestamp: startResult.matchState!.lastMoveTimestamp,
+    // Start Draft phase instead of starting match
+    const room = this.gameService.getRoom(data.roomCode);
+    if (room && room.players.length === 2 && room.phase === 'waiting') {
+      room.phase = 'draft';
+      room.draftEndTime = Date.now() + 60000;
+
+      // 60-second draft timeout on server
+      room.draftTimer = setTimeout(() => {
+        this.handleDraftTimeout(data.roomCode);
+      }, 60000);
+
+      this.server.to(data.roomCode).emit('draft-started', {
+        roomCode: data.roomCode,
+        draftEndTime: room.draftEndTime,
+        players: room.players.map(p => ({ id: p.id, color: p.color })),
       });
-      this.scheduleTurnTimeout(data.roomCode);
-      console.log(`Match started in room ${data.roomCode}`);
+      console.log(`Draft phase started in room ${data.roomCode}`);
     }
   }
 
@@ -127,6 +159,64 @@ export class GameGateway implements OnGatewayDisconnect {
     });
   }
 
+  // ─── Select Variant ──────────────────────────────────────
+  @SubscribeMessage('select-variant')
+  handleSelectVariant(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string; variantId: string | null }
+  ): void {
+    const result = this.gameService.selectVariant(data.roomCode, data.playerId, data.variantId);
+    if (!result.success) {
+      client.emit('error', { message: result.error });
+      return;
+    }
+
+    // Broadcast the selection to everyone in the room (variantId is null to keep it hidden during draft)
+    this.server.to(data.roomCode).emit('player-variant-selected', {
+      playerId: data.playerId,
+      variantId: null,
+      confirmed: false,
+    });
+  }
+
+  // ─── Confirm Variant ─────────────────────────────────────
+  @SubscribeMessage('confirm-variant')
+  handleConfirmVariant(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string }
+  ): void {
+    const result = this.gameService.confirmVariant(data.roomCode, data.playerId);
+    if (!result.success) {
+      client.emit('error', { message: result.error });
+      return;
+    }
+
+    this.server.to(data.roomCode).emit('player-variant-confirmed', {
+      playerId: data.playerId,
+      confirmed: true,
+    });
+
+    if (result.allConfirmed) {
+      this.proceedToReveal(data.roomCode);
+    }
+  }
+
+  // ─── End Turn ────────────────────────────────────────────
+  @SubscribeMessage('end-turn')
+  handleEndTurn(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string }
+  ): void {
+    const result = this.gameService.endTurn(data.roomCode, data.playerId);
+    if (!result.success) {
+      client.emit('error', { message: result.error });
+      return;
+    }
+
+    this.emitStateToRoom(data.roomCode, 'move-made');
+    this.scheduleTurnTimeout(data.roomCode);
+  }
+
   // ─── Move ────────────────────────────────────────────────
   @SubscribeMessage('move')
   handleMove(
@@ -145,15 +235,10 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
-    this.server.to(data.roomCode).emit('move-made', {
+    this.emitStateToRoom(data.roomCode, 'move-made', {
       from: data.from,
       to: data.to,
-      board: result.matchState!.board,
-      currentTurn: result.matchState!.currentTurn,
       capturedPiece: result.capturedPiece,
-      whiteTimeLeft: result.matchState!.whiteTimeLeft,
-      blackTimeLeft: result.matchState!.blackTimeLeft,
-      lastMoveTimestamp: result.matchState!.lastMoveTimestamp,
     });
 
     // Check for game over
@@ -175,6 +260,61 @@ export class GameGateway implements OnGatewayDisconnect {
     }
   }
 
+  // ─── Use Skill ───────────────────────────────────────────
+  @SubscribeMessage('use-skill')
+  handleUseSkill(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string; skillId: string; targets: any[] }
+  ): void {
+    const result = this.gameService.useSkill(
+      data.roomCode,
+      data.playerId,
+      data.skillId,
+      data.targets
+    );
+
+    if (!result.success) {
+      client.emit('skill-rejected', { reason: result.error });
+      return;
+    }
+
+    this.emitStateToRoom(data.roomCode, 'skill-used', {
+      skillId: data.skillId,
+      playerId: data.playerId,
+      actions: result.actions,
+    });
+
+    const room = this.gameService.getRoom(data.roomCode);
+    if (room && room.match) {
+      const winner = room.match.getWinner();
+      if (winner) {
+        this.gameService.clearTurnTimeout(data.roomCode);
+        this.server.to(data.roomCode).emit('match-ended', {
+          winner,
+        });
+        console.log(`Match ended in room ${data.roomCode} after skill execution. Winner: ${winner}`);
+      } else {
+        this.scheduleTurnTimeout(data.roomCode);
+      }
+    }
+  }
+
+  // ─── Pass Skill ──────────────────────────────────────────
+  @SubscribeMessage('pass-skill')
+  handlePassSkill(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string }
+  ): void {
+    const result = this.gameService.passSkill(data.roomCode, data.playerId);
+    if (!result.success) {
+      client.emit('error', { message: result.error });
+      return;
+    }
+
+    this.emitStateToRoom(data.roomCode, 'move-made');
+    this.scheduleTurnTimeout(data.roomCode);
+  }
+
   // ─── Reconnect ───────────────────────────────────────────
   @SubscribeMessage('reconnect-room')
   handleReconnect(
@@ -192,12 +332,16 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
+    const room = this.gameService.getRoom(data.roomCode);
+    const serializedState = room?.match ? room.match.serializeForPlayer(result.playerColor!) : undefined;
     client.join(data.roomCode);
     client.emit('reconnected', {
       roomCode: data.roomCode,
       playerId: data.playerId,
       playerColor: result.playerColor,
-      matchState: result.matchState,
+      matchState: serializedState,
+      roomPhase: room?.phase || 'waiting',
+      draftEndTime: room?.draftEndTime,
     });
 
     client.to(data.roomCode).emit('player-reconnected', {
@@ -252,5 +396,63 @@ export class GameGateway implements OnGatewayDisconnect {
       });
       this.gameService.removeRoom(info.roomCode);
     });
+  }
+
+  // ─── Draft Phase Transitions ─────────────────────────────
+  private handleDraftTimeout(roomCode: string): void {
+    const room = this.gameService.getRoom(roomCode);
+    if (!room || room.phase !== 'draft') return;
+
+    // Auto-confirm unconfirmed players
+    for (const player of room.players) {
+      if (!player.variantConfirmed) {
+        this.gameService.confirmVariant(roomCode, player.id);
+      }
+    }
+
+    this.proceedToReveal(roomCode);
+  }
+
+  private proceedToReveal(roomCode: string): void {
+    const room = this.gameService.getRoom(roomCode);
+    if (!room) return;
+
+    room.phase = 'reveal';
+    this.gameService.clearDraftTimers(room);
+
+    const whitePlayer = room.players.find(p => p.color === Color.White);
+    const blackPlayer = room.players.find(p => p.color === Color.Black);
+
+    this.server.to(roomCode).emit('draft-completed', {
+      whitePlayerId: whitePlayer?.id,
+      whiteVariantId: whitePlayer?.variantId || 'lightning',
+      blackPlayerId: blackPlayer?.id,
+      blackVariantId: blackPlayer?.variantId || 'lightning',
+    });
+
+    room.revealTimer = setTimeout(() => {
+      this.proceedToLoading(roomCode);
+    }, 3000);
+  }
+
+  private proceedToLoading(roomCode: string): void {
+    const room = this.gameService.getRoom(roomCode);
+    if (!room) return;
+
+    room.phase = 'loading';
+    this.server.to(roomCode).emit('loading-started');
+
+    room.loadingTimer = setTimeout(() => {
+      this.proceedToMatchStart(roomCode);
+    }, 5000);
+  }
+
+  private proceedToMatchStart(roomCode: string): void {
+    const startResult = this.gameService.startMatch(roomCode);
+    if (startResult.success) {
+      this.emitStateToRoom(roomCode, 'match-started');
+      this.scheduleTurnTimeout(roomCode);
+      console.log(`Match started after loading in room ${roomCode}`);
+    }
   }
 }

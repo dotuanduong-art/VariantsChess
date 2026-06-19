@@ -36,6 +36,7 @@ let GameService = class GameService {
             players: [player],
             match: null,
             disconnectTimers: new Map(),
+            phase: 'waiting',
         };
         this.rooms.set(code, room);
         return { roomCode: code, playerId };
@@ -91,8 +92,103 @@ let GameService = class GameService {
             return { success: false, error: 'Match already started' };
         }
         room.match = new game_core_1.Match();
+        room.phase = 'playing';
+        this.clearDraftTimers(room);
+        const whitePlayer = room.players.find(p => p.color === game_core_1.Color.White);
+        const blackPlayer = room.players.find(p => p.color === game_core_1.Color.Black);
+        room.match.setVariants(whitePlayer?.variantId || null, blackPlayer?.variantId || null);
         room.match.start();
         return { success: true, matchState: room.match.toSerializable() };
+    }
+    selectVariant(roomCode, playerId, variantId) {
+        const room = this.rooms.get(roomCode);
+        if (!room) {
+            return { success: false, error: 'Room not found' };
+        }
+        if (room.match) {
+            return { success: false, error: 'Cannot change variant after match starts' };
+        }
+        const player = room.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, error: 'Player not found in room' };
+        }
+        if (player.variantConfirmed) {
+            return { success: false, error: 'Variant already confirmed' };
+        }
+        player.variantId = variantId;
+        return { success: true };
+    }
+    confirmVariant(roomCode, playerId) {
+        const room = this.rooms.get(roomCode);
+        if (!room) {
+            return { success: false, error: 'Room not found' };
+        }
+        if (room.phase !== 'draft') {
+            return { success: false, error: 'Not in draft phase' };
+        }
+        const player = room.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, error: 'Player not found in room' };
+        }
+        if (!player.variantId) {
+            player.variantId = 'lightning';
+        }
+        player.variantConfirmed = true;
+        const allConfirmed = room.players.length === 2 && room.players.every(p => p.variantConfirmed);
+        return { success: true, allConfirmed };
+    }
+    clearDraftTimers(room) {
+        if (room.draftTimer) {
+            clearTimeout(room.draftTimer);
+            room.draftTimer = undefined;
+        }
+        if (room.revealTimer) {
+            clearTimeout(room.revealTimer);
+            room.revealTimer = undefined;
+        }
+        if (room.loadingTimer) {
+            clearTimeout(room.loadingTimer);
+            room.loadingTimer = undefined;
+        }
+    }
+    useSkill(roomCode, playerId, skillId, targets) {
+        const room = this.rooms.get(roomCode);
+        if (!room) {
+            return { success: false, error: 'Room not found' };
+        }
+        if (!room.match) {
+            return { success: false, error: 'Match not started' };
+        }
+        const player = room.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, error: 'Player not found in room' };
+        }
+        const result = room.match.useSkill(player.color, skillId, targets);
+        if (!result.success) {
+            return { success: false, error: result.reason };
+        }
+        return {
+            success: true,
+            matchState: room.match.toSerializable(),
+            actions: result.actions,
+        };
+    }
+    canPlayerUseAnySkill(match, color) {
+        const state = match.getGameState();
+        const variantId = color === game_core_1.Color.White ? state.whiteVariantId : state.blackVariantId;
+        if (!variantId)
+            return false;
+        const variant = match.getVariantRegistry().get(variantId);
+        if (!variant)
+            return false;
+        const playerAP = color === game_core_1.Color.White ? state.whiteAP : state.blackAP;
+        for (const skill of variant.skills) {
+            const cost = typeof skill.apCost === 'function' ? skill.apCost(state, color) : skill.apCost;
+            if (playerAP >= cost) {
+                return true;
+            }
+        }
+        return false;
     }
     makeMove(roomCode, playerId, from, to) {
         const room = this.rooms.get(roomCode);
@@ -118,6 +214,60 @@ let GameService = class GameService {
             capturedPiece: result.capturedPiece,
             isKingCaptured: result.isKingCaptured,
             winner: room.match.getWinner() ?? undefined,
+        };
+    }
+    passSkill(roomCode, playerId) {
+        const room = this.rooms.get(roomCode);
+        if (!room) {
+            return { success: false, error: 'Room not found' };
+        }
+        if (!room.match) {
+            return { success: false, error: 'Match not started' };
+        }
+        const player = room.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, error: 'Player not found in room' };
+        }
+        const result = room.match.submitAction({ type: 'PASS_SKILL', player: player.color });
+        if (!result.success) {
+            return { success: false, error: result.reason };
+        }
+        return {
+            success: true,
+            matchState: room.match.toSerializable(),
+        };
+    }
+    endTurn(roomCode, playerId) {
+        const room = this.rooms.get(roomCode);
+        if (!room) {
+            return { success: false, error: 'Room not found' };
+        }
+        if (!room.match) {
+            return { success: false, error: 'Match not started' };
+        }
+        const player = room.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, error: 'Player not found in room' };
+        }
+        const result = room.match.submitAction({ type: 'END_TURN', player: player.color });
+        if (!result.success) {
+            return { success: false, error: result.reason };
+        }
+        return {
+            success: true,
+            matchState: room.match.toSerializable(),
+        };
+    }
+    handleTimeoutSkip(roomCode, playerColor) {
+        const room = this.rooms.get(roomCode);
+        if (!room || !room.match) {
+            return { success: false, reason: 'Room or match not found' };
+        }
+        const result = room.match.handleTimeoutSkip(playerColor);
+        return {
+            success: result.success,
+            matchState: room.match.toSerializable(),
+            reason: result.reason,
         };
     }
     getRoomBySocketId(socketId) {
@@ -195,6 +345,8 @@ let GameService = class GameService {
             for (const timer of room.disconnectTimers.values()) {
                 clearTimeout(timer);
             }
+            this.clearDraftTimers(room);
+            this.clearTurnTimeout(roomCode);
             this.rooms.delete(roomCode);
         }
     }

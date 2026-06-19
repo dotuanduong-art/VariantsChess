@@ -1,6 +1,15 @@
-import { Board, SerializedBoard } from '../board/Board';
+import { Board } from '../board/Board';
 import { Position } from '../board/Position';
 import { Color, PieceType } from '../pieces/Piece';
+import { GameState } from '../state/GameState';
+import { Action } from '../action/Action';
+import { ActionResult } from '../action/ActionPipeline';
+import { SnapshotManager } from '../state/Snapshot';
+import { EventBus } from '../event/EventBus';
+import { MoveModifierChain } from '../modifier/MoveModifierChain';
+import { EffectRegistry } from '../effect/EffectRegistry';
+import { VariantRegistry } from '../variant/VariantRegistry';
+import { SkillTarget } from '../variant/Skill';
 export type MatchStatus = 'waiting' | 'playing' | 'finished';
 export interface MoveResult {
     success: boolean;
@@ -12,7 +21,7 @@ export interface MoveResult {
     isKingCaptured?: boolean;
 }
 export interface SerializedMatch {
-    board: SerializedBoard;
+    board: any;
     currentTurn: Color;
     status: MatchStatus;
     winner: Color | null;
@@ -25,15 +34,17 @@ export interface SerializedMatch {
     lastMoveTimestamp: number;
 }
 export declare class Match {
-    private board;
-    private currentTurn;
-    private status;
-    private winner;
+    private state;
+    private pipeline;
+    private snapshots;
+    private eventBus;
+    private moveModifierChain;
+    private effectRegistry;
+    private variantRegistry;
     private moveHistory;
-    private whiteTimeLeft;
-    private blackTimeLeft;
-    private lastMoveTimestamp;
+    turnTimeoutOverride: number | null;
     constructor();
+    getTurnTimeoutMs(): number;
     /**
      * Start the match
      */
@@ -43,9 +54,19 @@ export declare class Match {
      */
     makeMove(playerColor: Color, from: Position, to: Position): MoveResult;
     /**
+     * Submit any action directly (e.g. for skills or pass skill)
+     */
+    submitAction(action: Action): ActionResult;
+    /**
      * Get legal moves for a position (used by frontend for highlighting)
      */
     getLegalMovesAt(pos: Position): Position[];
+    getMoveModifierChain(): MoveModifierChain;
+    getEffectRegistry(): EffectRegistry;
+    getVariantRegistry(): VariantRegistry;
+    setVariants(whiteVariantId: string | null, blackVariantId: string | null): void;
+    useSkill(playerColor: Color, skillId: string, targets: SkillTarget[]): ActionResult;
+    handleTimeoutSkip(playerColor: Color): ActionResult;
     getBoard(): Board;
     getCurrentTurn(): Color;
     getStatus(): MatchStatus;
@@ -54,6 +75,9 @@ export declare class Match {
         from: string;
         to: string;
     }[];
+    getGameState(): GameState;
+    getEventBus(): EventBus;
+    getSnapshots(): SnapshotManager;
     /**
      * Check if the current player has run out of time
      */
@@ -62,5 +86,36 @@ export declare class Match {
      * Serialize the entire match state for network transfer
      */
     toSerializable(): SerializedMatch;
+    private getValidPositionsForRequirement;
+    serializeForPlayer(player: Color): {
+        availableSkillTargets: Record<string, {
+            requirements: any[];
+            validPositions: Position[][];
+        }>;
+        board: import("../board/Board").SerializedBoard;
+        currentTurn: Color;
+        turnNumber: number;
+        status: MatchStatus;
+        winner: Color | null;
+        turnPhase: import("../state/GameState").TurnPhase;
+        hasMoved: boolean;
+        skillsUsedThisTurn: number;
+        passSkillSubmitted: boolean;
+        whiteAP: number;
+        blackAP: number;
+        whiteTimeLeft: number;
+        blackTimeLeft: number;
+        lastMoveTimestamp: number;
+        actionHistory: any;
+        graveyard: import("..").GraveyardEntry[];
+        rngSeed: number;
+        rngCounter: number;
+        whiteVariantId: string | null;
+        blackVariantId: string | null;
+        variantState: Record<string, any>;
+        pendingDeadKings: Color[];
+        whitePlayerEffects: import("..").Effect[];
+        blackPlayerEffects: import("..").Effect[];
+    };
 }
 //# sourceMappingURL=Match.d.ts.map

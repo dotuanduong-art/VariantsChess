@@ -23,6 +23,9 @@ export function getSlidingMoves(
     let current: Position = { col: pos.col + dcol, row: pos.row + drow };
 
     while (isInBounds(current)) {
+      if (board.getCellEffects(current).some(e => e.type === 'mountain')) {
+        break; // Blocked by mountain
+      }
       const piece = board.getPiece(current);
       if (piece) {
         if (piece.color !== color) {

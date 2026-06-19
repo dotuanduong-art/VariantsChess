@@ -3,6 +3,7 @@
 // Move Generator - Dispatches to piece-specific move generators
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getBaseLegalMoves = getBaseLegalMoves;
 exports.getLegalMoves = getLegalMoves;
 const Piece_1 = require("../pieces/Piece");
 const pawnMoves_1 = require("./pawnMoves");
@@ -12,10 +13,10 @@ const knightMoves_1 = require("./knightMoves");
 const queenMoves_1 = require("./queenMoves");
 const kingMoves_1 = require("./kingMoves");
 /**
- * Get all legal moves for the piece at the given position.
- * Returns empty array if no piece at position.
+ * Base legal moves — standard chess rules only, no effects/modifiers.
+ * This is the first step in the MoveModifierChain.
  */
-function getLegalMoves(board, pos) {
+function getBaseLegalMoves(board, pos) {
     const piece = board.getPiece(pos);
     if (!piece)
         return [];
@@ -35,5 +36,13 @@ function getLegalMoves(board, pos) {
         default:
             return [];
     }
+}
+/**
+ * Backward-compatible alias — delegates to getBaseLegalMoves.
+ * In Step 4+ this can be replaced by MoveModifierChain.computeLegalMoves()
+ * when the chain is available from context.
+ */
+function getLegalMoves(board, pos) {
+    return getBaseLegalMoves(board, pos);
 }
 //# sourceMappingURL=MoveGenerator.js.map

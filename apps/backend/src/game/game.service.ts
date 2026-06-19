@@ -10,6 +10,8 @@ export interface Player {
   socketId: string;
   color: Color;
   connected: boolean;
+  variantId?: string | null;
+  variantConfirmed?: boolean;
 }
 
 export interface Room {
@@ -18,6 +20,11 @@ export interface Room {
   match: Match | null;
   disconnectTimers: Map<string, NodeJS.Timeout>;
   turnTimeout?: NodeJS.Timeout;
+  draftTimer?: NodeJS.Timeout;
+  revealTimer?: NodeJS.Timeout;
+  loadingTimer?: NodeJS.Timeout;
+  draftEndTime?: number;
+  phase?: 'waiting' | 'draft' | 'reveal' | 'loading' | 'playing' | 'finished';
 }
 
 @Injectable()
@@ -63,6 +70,7 @@ export class GameService {
       players: [player],
       match: null,
       disconnectTimers: new Map(),
+      phase: 'waiting',
     };
 
     this.rooms.set(code, room);
@@ -147,9 +155,155 @@ export class GameService {
     }
 
     room.match = new Match();
+    room.phase = 'playing';
+    this.clearDraftTimers(room);
+    
+    // Load variants selected during lobby phase
+    const whitePlayer = room.players.find(p => p.color === Color.White);
+    const blackPlayer = room.players.find(p => p.color === Color.Black);
+    room.match.setVariants(whitePlayer?.variantId || null, blackPlayer?.variantId || null);
+
     room.match.start();
 
     return { success: true, matchState: room.match.toSerializable() };
+  }
+
+  /**
+   * Select a variant for a player in a room
+   */
+  selectVariant(
+    roomCode: string,
+    playerId: string,
+    variantId: string | null
+  ): { success: boolean; error?: string } {
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      return { success: false, error: 'Room not found' };
+    }
+    if (room.match) {
+      return { success: false, error: 'Cannot change variant after match starts' };
+    }
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) {
+      return { success: false, error: 'Player not found in room' };
+    }
+
+    if (player.variantConfirmed) {
+      return { success: false, error: 'Variant already confirmed' };
+    }
+
+    player.variantId = variantId;
+    return { success: true };
+  }
+
+  /**
+   * Confirm variant choice for a player
+   */
+  confirmVariant(
+    roomCode: string,
+    playerId: string
+  ): { success: boolean; error?: string; allConfirmed?: boolean } {
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      return { success: false, error: 'Room not found' };
+    }
+    if (room.phase !== 'draft') {
+      return { success: false, error: 'Not in draft phase' };
+    }
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) {
+      return { success: false, error: 'Player not found in room' };
+    }
+
+    // Default to 'lightning' if none selected
+    if (!player.variantId) {
+      player.variantId = 'lightning';
+    }
+
+    player.variantConfirmed = true;
+
+    const allConfirmed = room.players.length === 2 && room.players.every(p => p.variantConfirmed);
+    return { success: true, allConfirmed };
+  }
+
+  /**
+   * Clear all draft/reveal/loading timers for a room
+   */
+  clearDraftTimers(room: Room): void {
+    if (room.draftTimer) {
+      clearTimeout(room.draftTimer);
+      room.draftTimer = undefined;
+    }
+    if (room.revealTimer) {
+      clearTimeout(room.revealTimer);
+      room.revealTimer = undefined;
+    }
+    if (room.loadingTimer) {
+      clearTimeout(room.loadingTimer);
+      room.loadingTimer = undefined;
+    }
+  }
+
+  /**
+   * Execute a variant skill
+   */
+  useSkill(
+    roomCode: string,
+    playerId: string,
+    skillId: string,
+    targets: any[]
+  ): {
+    success: boolean;
+    matchState?: SerializedMatch;
+    error?: string;
+    actions?: any[];
+  } {
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      return { success: false, error: 'Room not found' };
+    }
+    if (!room.match) {
+      return { success: false, error: 'Match not started' };
+    }
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) {
+      return { success: false, error: 'Player not found in room' };
+    }
+
+    const result = room.match.useSkill(player.color, skillId, targets);
+    if (!result.success) {
+      return { success: false, error: result.reason };
+    }
+
+    return {
+      success: true,
+      matchState: room.match.toSerializable(),
+      actions: result.actions,
+    };
+  }
+
+  /**
+   * Helper to check if a player can afford any variant skill
+   */
+  private canPlayerUseAnySkill(match: Match, color: Color): boolean {
+    const state = match.getGameState();
+    const variantId = color === Color.White ? state.whiteVariantId : state.blackVariantId;
+    if (!variantId) return false;
+
+    const variant = match.getVariantRegistry().get(variantId);
+    if (!variant) return false;
+
+    const playerAP = color === Color.White ? state.whiteAP : state.blackAP;
+    for (const skill of variant.skills) {
+      const cost = typeof skill.apCost === 'function' ? skill.apCost(state, color) : skill.apCost;
+      if (playerAP >= cost) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -189,12 +343,96 @@ export class GameService {
       return { success: false, error: result.reason };
     }
 
+
+
     return {
       success: true,
       matchState: room.match.toSerializable(),
       capturedPiece: result.capturedPiece,
       isKingCaptured: result.isKingCaptured,
       winner: room.match.getWinner() ?? undefined,
+    };
+  }
+
+  /**
+   * Process a pass skill action
+   */
+  passSkill(
+    roomCode: string,
+    playerId: string
+  ): { success: boolean; matchState?: SerializedMatch; error?: string } {
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      return { success: false, error: 'Room not found' };
+    }
+    if (!room.match) {
+      return { success: false, error: 'Match not started' };
+    }
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) {
+      return { success: false, error: 'Player not found in room' };
+    }
+
+    const result = room.match.submitAction({ type: 'PASS_SKILL', player: player.color });
+    if (!result.success) {
+      return { success: false, error: result.reason };
+    }
+
+    return {
+      success: true,
+      matchState: room.match.toSerializable(),
+    };
+  }
+
+  /**
+   * Process an explicit manual end turn action
+   */
+  endTurn(
+    roomCode: string,
+    playerId: string
+  ): { success: boolean; matchState?: SerializedMatch; error?: string } {
+    const room = this.rooms.get(roomCode);
+    if (!room) {
+      return { success: false, error: 'Room not found' };
+    }
+    if (!room.match) {
+      return { success: false, error: 'Match not started' };
+    }
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) {
+      return { success: false, error: 'Player not found in room' };
+    }
+
+    const result = room.match.submitAction({ type: 'END_TURN', player: player.color });
+    if (!result.success) {
+      return { success: false, error: result.reason };
+    }
+
+    return {
+      success: true,
+      matchState: room.match.toSerializable(),
+    };
+  }
+
+  /**
+   * Process a timeout skip for a player under Electric Terrain
+   */
+  handleTimeoutSkip(
+    roomCode: string,
+    playerColor: Color
+  ): { success: boolean; matchState?: SerializedMatch; reason?: string } {
+    const room = this.rooms.get(roomCode);
+    if (!room || !room.match) {
+      return { success: false, reason: 'Room or match not found' };
+    }
+ 
+    const result = room.match.handleTimeoutSkip(playerColor);
+    return {
+      success: result.success,
+      matchState: room.match.toSerializable(),
+      reason: result.reason,
     };
   }
 
@@ -314,6 +552,8 @@ export class GameService {
       for (const timer of room.disconnectTimers.values()) {
         clearTimeout(timer);
       }
+      this.clearDraftTimers(room);
+      this.clearTurnTimeout(roomCode);
       this.rooms.delete(roomCode);
     }
   }

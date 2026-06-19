@@ -4,6 +4,8 @@ export interface Player {
     socketId: string;
     color: Color;
     connected: boolean;
+    variantId?: string | null;
+    variantConfirmed?: boolean;
 }
 export interface Room {
     code: string;
@@ -11,6 +13,11 @@ export interface Room {
     match: Match | null;
     disconnectTimers: Map<string, NodeJS.Timeout>;
     turnTimeout?: NodeJS.Timeout;
+    draftTimer?: NodeJS.Timeout;
+    revealTimer?: NodeJS.Timeout;
+    loadingTimer?: NodeJS.Timeout;
+    draftEndTime?: number;
+    phase?: 'waiting' | 'draft' | 'reveal' | 'loading' | 'playing' | 'finished';
 }
 export declare class GameService {
     private rooms;
@@ -35,6 +42,23 @@ export declare class GameService {
         matchState?: SerializedMatch;
         error?: string;
     };
+    selectVariant(roomCode: string, playerId: string, variantId: string | null): {
+        success: boolean;
+        error?: string;
+    };
+    confirmVariant(roomCode: string, playerId: string): {
+        success: boolean;
+        error?: string;
+        allConfirmed?: boolean;
+    };
+    clearDraftTimers(room: Room): void;
+    useSkill(roomCode: string, playerId: string, skillId: string, targets: any[]): {
+        success: boolean;
+        matchState?: SerializedMatch;
+        error?: string;
+        actions?: any[];
+    };
+    private canPlayerUseAnySkill;
     makeMove(roomCode: string, playerId: string, from: string, to: string): {
         success: boolean;
         matchState?: SerializedMatch;
@@ -45,6 +69,21 @@ export declare class GameService {
         };
         isKingCaptured?: boolean;
         winner?: Color;
+    };
+    passSkill(roomCode: string, playerId: string): {
+        success: boolean;
+        matchState?: SerializedMatch;
+        error?: string;
+    };
+    endTurn(roomCode: string, playerId: string): {
+        success: boolean;
+        matchState?: SerializedMatch;
+        error?: string;
+    };
+    handleTimeoutSkip(roomCode: string, playerColor: Color): {
+        success: boolean;
+        matchState?: SerializedMatch;
+        reason?: string;
     };
     getRoomBySocketId(socketId: string): Room | undefined;
     getPlayerBySocketId(socketId: string): Player | undefined;

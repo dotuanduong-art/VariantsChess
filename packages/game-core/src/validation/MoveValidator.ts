@@ -6,6 +6,8 @@ import { Board } from '../board/Board';
 import { Position, isInBounds, posEquals } from '../board/Position';
 import { Color } from '../pieces/Piece';
 import { getLegalMoves } from '../movement/MoveGenerator';
+import { GameState } from '../state/GameState';
+import { MoveModifierChain } from '../modifier/MoveModifierChain';
 
 export interface ValidationResult {
   valid: boolean;
@@ -20,14 +22,16 @@ export interface ValidationResult {
  * 2. A piece exists at the source
  * 3. The piece belongs to the requesting player
  * 4. It is the player's turn
- * 5. The destination is a legal move for that piece
+ * 5. The destination is a legal move for that piece (evaluating modifiers if provided)
  */
 export function validateMove(
   board: Board,
   currentTurn: Color,
   playerColor: Color,
   from: Position,
-  to: Position
+  to: Position,
+  state?: GameState,
+  modifierChain?: MoveModifierChain
 ): ValidationResult {
   // Check bounds
   if (!isInBounds(from) || !isInBounds(to)) {
@@ -56,7 +60,10 @@ export function validateMove(
   }
 
   // Check legal move
-  const legalMoves = getLegalMoves(board, from);
+  const legalMoves = modifierChain && state
+    ? modifierChain.computeLegalMoves(board, from, state)
+    : getLegalMoves(board, from);
+
   const isLegal = legalMoves.some(move => posEquals(move, to));
   if (!isLegal) {
     return { valid: false, reason: 'Illegal move for this piece' };

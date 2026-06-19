@@ -14,9 +14,9 @@ const MoveGenerator_1 = require("../movement/MoveGenerator");
  * 2. A piece exists at the source
  * 3. The piece belongs to the requesting player
  * 4. It is the player's turn
- * 5. The destination is a legal move for that piece
+ * 5. The destination is a legal move for that piece (evaluating modifiers if provided)
  */
-function validateMove(board, currentTurn, playerColor, from, to) {
+function validateMove(board, currentTurn, playerColor, from, to, state, modifierChain) {
     // Check bounds
     if (!(0, Position_1.isInBounds)(from) || !(0, Position_1.isInBounds)(to)) {
         return { valid: false, reason: 'Position out of bounds' };
@@ -39,7 +39,9 @@ function validateMove(board, currentTurn, playerColor, from, to) {
         return { valid: false, reason: 'That piece does not belong to you' };
     }
     // Check legal move
-    const legalMoves = (0, MoveGenerator_1.getLegalMoves)(board, from);
+    const legalMoves = modifierChain && state
+        ? modifierChain.computeLegalMoves(board, from, state)
+        : (0, MoveGenerator_1.getLegalMoves)(board, from);
     const isLegal = legalMoves.some(move => (0, Position_1.posEquals)(move, to));
     if (!isLegal) {
         return { valid: false, reason: 'Illegal move for this piece' };

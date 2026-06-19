@@ -15,6 +15,9 @@ function getSlidingMoves(board, pos, color, directions) {
     for (const { dcol, drow } of directions) {
         let current = { col: pos.col + dcol, row: pos.row + drow };
         while ((0, Position_1.isInBounds)(current)) {
+            if (board.getCellEffects(current).some(e => e.type === 'mountain')) {
+                break; // Blocked by mountain
+            }
             const piece = board.getPiece(current);
             if (piece) {
                 if (piece.color !== color) {

@@ -16,10 +16,13 @@ export enum Color {
   Black = 'Black',
 }
 
+import { Effect } from '../effect/Effect';
+
 export interface Piece {
   id: string;
   type: PieceType;
   color: Color;
+  effects: Effect[];
 }
 
 /**

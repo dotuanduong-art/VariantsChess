@@ -38,18 +38,18 @@ function createInitialBoard() {
     // White pieces
     for (let col = 0; col < Board_1.BOARD_SIZE; col++) {
         // Back rank (row 0 = rank 1)
-        const piece = { id: `w_${BACK_RANK_ORDER[col].toLowerCase()}_${col}`, type: BACK_RANK_ORDER[col], color: Piece_1.Color.White };
+        const piece = { id: `w_${BACK_RANK_ORDER[col].toLowerCase()}_${col}`, type: BACK_RANK_ORDER[col], color: Piece_1.Color.White, effects: [] };
         board.setPiece({ col, row: 0 }, piece);
         // Pawn row (row 1 = rank 2)
-        board.setPiece({ col, row: 1 }, { id: `w_pawn_${col}`, type: Piece_1.PieceType.Pawn, color: Piece_1.Color.White });
+        board.setPiece({ col, row: 1 }, { id: `w_pawn_${col}`, type: Piece_1.PieceType.Pawn, color: Piece_1.Color.White, effects: [] });
     }
     // Black pieces
     for (let col = 0; col < Board_1.BOARD_SIZE; col++) {
         // Back rank (row 14 = rank 15)
-        const piece = { id: `b_${BACK_RANK_ORDER[col].toLowerCase()}_${col}`, type: BACK_RANK_ORDER[col], color: Piece_1.Color.Black };
+        const piece = { id: `b_${BACK_RANK_ORDER[col].toLowerCase()}_${col}`, type: BACK_RANK_ORDER[col], color: Piece_1.Color.Black, effects: [] };
         board.setPiece({ col, row: 14 }, piece);
         // Pawn row (row 13 = rank 14)
-        board.setPiece({ col, row: 13 }, { id: `b_pawn_${col}`, type: Piece_1.PieceType.Pawn, color: Piece_1.Color.Black });
+        board.setPiece({ col, row: 13 }, { id: `b_pawn_${col}`, type: Piece_1.PieceType.Pawn, color: Piece_1.Color.Black, effects: [] });
     }
     return board;
 }

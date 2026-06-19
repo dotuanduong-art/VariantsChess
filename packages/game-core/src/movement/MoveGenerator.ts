@@ -13,10 +13,10 @@ import { getQueenMoves } from './queenMoves';
 import { getKingMoves } from './kingMoves';
 
 /**
- * Get all legal moves for the piece at the given position.
- * Returns empty array if no piece at position.
+ * Base legal moves — standard chess rules only, no effects/modifiers.
+ * This is the first step in the MoveModifierChain.
  */
-export function getLegalMoves(board: Board, pos: Position): Position[] {
+export function getBaseLegalMoves(board: Board, pos: Position): Position[] {
   const piece = board.getPiece(pos);
   if (!piece) return [];
 
@@ -37,3 +37,13 @@ export function getLegalMoves(board: Board, pos: Position): Position[] {
       return [];
   }
 }
+
+/**
+ * Backward-compatible alias — delegates to getBaseLegalMoves.
+ * In Step 4+ this can be replaced by MoveModifierChain.computeLegalMoves()
+ * when the chain is available from context.
+ */
+export function getLegalMoves(board: Board, pos: Position): Position[] {
+  return getBaseLegalMoves(board, pos);
+}
+

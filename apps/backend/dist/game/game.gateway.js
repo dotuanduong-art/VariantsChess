@@ -23,6 +23,18 @@ let GameGateway = class GameGateway {
     constructor(gameService) {
         this.gameService = gameService;
     }
+    emitStateToRoom(roomCode, event, extraData = {}) {
+        const room = this.gameService.getRoom(roomCode);
+        if (!room || !room.match)
+            return;
+        for (const player of room.players) {
+            const playerState = room.match.serializeForPlayer(player.color);
+            this.server.to(player.socketId).emit(event, {
+                ...extraData,
+                ...playerState,
+            });
+        }
+    }
     scheduleTurnTimeout(roomCode) {
         const room = this.gameService.getRoom(roomCode);
         if (!room || !room.match)
@@ -34,18 +46,35 @@ let GameGateway = class GameGateway {
             this.gameService.clearTurnTimeout(roomCode);
             return;
         }
-        const delay = state.currentTurn === game_core_1.Color.White ? state.whiteTimeLeft : state.blackTimeLeft;
+        const matchState = room.match.getGameState();
+        const hasTimeoutOverride = matchState.variantState.turnTimeoutOverride !== undefined && matchState.variantState.turnTimeoutOverride !== null;
+        const delay = hasTimeoutOverride ? room.match.getTurnTimeoutMs() : (state.currentTurn === game_core_1.Color.White ? state.whiteTimeLeft : state.blackTimeLeft);
         this.gameService.setTurnTimeout(roomCode, delay, () => {
-            const match = this.gameService.getRoom(roomCode)?.match;
-            if (!match)
+            const activeRoom = this.gameService.getRoom(roomCode);
+            if (!activeRoom || !activeRoom.match)
                 return;
-            const timeoutWinner = match.checkTimeout();
-            if (timeoutWinner) {
-                this.server.to(roomCode).emit('match-ended', {
-                    winner: timeoutWinner,
-                    reason: 'Time out',
-                });
-                console.log(`Match ended in room ${roomCode} by timeout. Winner: ${timeoutWinner}`);
+            const activeMatchState = activeRoom.match.getGameState();
+            const activeHasOverride = activeMatchState.variantState.turnTimeoutOverride !== undefined && activeMatchState.variantState.turnTimeoutOverride !== null;
+            if (activeHasOverride) {
+                const currentTurnColor = activeRoom.match.getCurrentTurn();
+                const result = this.gameService.handleTimeoutSkip(roomCode, currentTurnColor);
+                if (result.success) {
+                    this.emitStateToRoom(roomCode, 'move-made');
+                    this.scheduleTurnTimeout(roomCode);
+                }
+                else {
+                    console.error(`Failed to handle timeout skip: ${result.reason}`);
+                }
+            }
+            else {
+                const timeoutWinner = activeRoom.match.checkTimeout();
+                if (timeoutWinner) {
+                    this.server.to(roomCode).emit('match-ended', {
+                        winner: timeoutWinner,
+                        reason: 'Time out',
+                    });
+                    console.log(`Match ended in room ${roomCode} by timeout. Winner: ${timeoutWinner}`);
+                }
             }
         });
     }
@@ -73,18 +102,19 @@ let GameGateway = class GameGateway {
             playerId: result.playerId,
             players: result.players?.map(p => ({ id: p.id, color: p.color })),
         });
-        const startResult = this.gameService.startMatch(data.roomCode);
-        if (startResult.success) {
-            this.server.to(data.roomCode).emit('match-started', {
-                board: startResult.matchState.board,
-                currentTurn: startResult.matchState.currentTurn,
-                status: startResult.matchState.status,
-                whiteTimeLeft: startResult.matchState.whiteTimeLeft,
-                blackTimeLeft: startResult.matchState.blackTimeLeft,
-                lastMoveTimestamp: startResult.matchState.lastMoveTimestamp,
+        const room = this.gameService.getRoom(data.roomCode);
+        if (room && room.players.length === 2 && room.phase === 'waiting') {
+            room.phase = 'draft';
+            room.draftEndTime = Date.now() + 60000;
+            room.draftTimer = setTimeout(() => {
+                this.handleDraftTimeout(data.roomCode);
+            }, 60000);
+            this.server.to(data.roomCode).emit('draft-started', {
+                roomCode: data.roomCode,
+                draftEndTime: room.draftEndTime,
+                players: room.players.map(p => ({ id: p.id, color: p.color })),
             });
-            this.scheduleTurnTimeout(data.roomCode);
-            console.log(`Match started in room ${data.roomCode}`);
+            console.log(`Draft phase started in room ${data.roomCode}`);
         }
     }
     handleChangeColor(client, data) {
@@ -99,21 +129,51 @@ let GameGateway = class GameGateway {
             color: data.color,
         });
     }
+    handleSelectVariant(client, data) {
+        const result = this.gameService.selectVariant(data.roomCode, data.playerId, data.variantId);
+        if (!result.success) {
+            client.emit('error', { message: result.error });
+            return;
+        }
+        this.server.to(data.roomCode).emit('player-variant-selected', {
+            playerId: data.playerId,
+            variantId: null,
+            confirmed: false,
+        });
+    }
+    handleConfirmVariant(client, data) {
+        const result = this.gameService.confirmVariant(data.roomCode, data.playerId);
+        if (!result.success) {
+            client.emit('error', { message: result.error });
+            return;
+        }
+        this.server.to(data.roomCode).emit('player-variant-confirmed', {
+            playerId: data.playerId,
+            confirmed: true,
+        });
+        if (result.allConfirmed) {
+            this.proceedToReveal(data.roomCode);
+        }
+    }
+    handleEndTurn(client, data) {
+        const result = this.gameService.endTurn(data.roomCode, data.playerId);
+        if (!result.success) {
+            client.emit('error', { message: result.error });
+            return;
+        }
+        this.emitStateToRoom(data.roomCode, 'move-made');
+        this.scheduleTurnTimeout(data.roomCode);
+    }
     handleMove(client, data) {
         const result = this.gameService.makeMove(data.roomCode, data.playerId, data.from, data.to);
         if (!result.success) {
             client.emit('move-rejected', { reason: result.error });
             return;
         }
-        this.server.to(data.roomCode).emit('move-made', {
+        this.emitStateToRoom(data.roomCode, 'move-made', {
             from: data.from,
             to: data.to,
-            board: result.matchState.board,
-            currentTurn: result.matchState.currentTurn,
             capturedPiece: result.capturedPiece,
-            whiteTimeLeft: result.matchState.whiteTimeLeft,
-            blackTimeLeft: result.matchState.blackTimeLeft,
-            lastMoveTimestamp: result.matchState.lastMoveTimestamp,
         });
         if (result.isKingCaptured && result.winner) {
             this.gameService.clearTurnTimeout(data.roomCode);
@@ -133,18 +193,57 @@ let GameGateway = class GameGateway {
             this.scheduleTurnTimeout(data.roomCode);
         }
     }
+    handleUseSkill(client, data) {
+        const result = this.gameService.useSkill(data.roomCode, data.playerId, data.skillId, data.targets);
+        if (!result.success) {
+            client.emit('skill-rejected', { reason: result.error });
+            return;
+        }
+        this.emitStateToRoom(data.roomCode, 'skill-used', {
+            skillId: data.skillId,
+            playerId: data.playerId,
+            actions: result.actions,
+        });
+        const room = this.gameService.getRoom(data.roomCode);
+        if (room && room.match) {
+            const winner = room.match.getWinner();
+            if (winner) {
+                this.gameService.clearTurnTimeout(data.roomCode);
+                this.server.to(data.roomCode).emit('match-ended', {
+                    winner,
+                });
+                console.log(`Match ended in room ${data.roomCode} after skill execution. Winner: ${winner}`);
+            }
+            else {
+                this.scheduleTurnTimeout(data.roomCode);
+            }
+        }
+    }
+    handlePassSkill(client, data) {
+        const result = this.gameService.passSkill(data.roomCode, data.playerId);
+        if (!result.success) {
+            client.emit('error', { message: result.error });
+            return;
+        }
+        this.emitStateToRoom(data.roomCode, 'move-made');
+        this.scheduleTurnTimeout(data.roomCode);
+    }
     handleReconnect(client, data) {
         const result = this.gameService.handleReconnect(data.roomCode, data.playerId, client.id);
         if (!result.success) {
             client.emit('error', { message: result.error });
             return;
         }
+        const room = this.gameService.getRoom(data.roomCode);
+        const serializedState = room?.match ? room.match.serializeForPlayer(result.playerColor) : undefined;
         client.join(data.roomCode);
         client.emit('reconnected', {
             roomCode: data.roomCode,
             playerId: data.playerId,
             playerColor: result.playerColor,
-            matchState: result.matchState,
+            matchState: serializedState,
+            roomPhase: room?.phase || 'waiting',
+            draftEndTime: room?.draftEndTime,
         });
         client.to(data.roomCode).emit('player-reconnected', {
             playerId: data.playerId,
@@ -185,6 +284,53 @@ let GameGateway = class GameGateway {
             this.gameService.removeRoom(info.roomCode);
         });
     }
+    handleDraftTimeout(roomCode) {
+        const room = this.gameService.getRoom(roomCode);
+        if (!room || room.phase !== 'draft')
+            return;
+        for (const player of room.players) {
+            if (!player.variantConfirmed) {
+                this.gameService.confirmVariant(roomCode, player.id);
+            }
+        }
+        this.proceedToReveal(roomCode);
+    }
+    proceedToReveal(roomCode) {
+        const room = this.gameService.getRoom(roomCode);
+        if (!room)
+            return;
+        room.phase = 'reveal';
+        this.gameService.clearDraftTimers(room);
+        const whitePlayer = room.players.find(p => p.color === game_core_1.Color.White);
+        const blackPlayer = room.players.find(p => p.color === game_core_1.Color.Black);
+        this.server.to(roomCode).emit('draft-completed', {
+            whitePlayerId: whitePlayer?.id,
+            whiteVariantId: whitePlayer?.variantId || 'lightning',
+            blackPlayerId: blackPlayer?.id,
+            blackVariantId: blackPlayer?.variantId || 'lightning',
+        });
+        room.revealTimer = setTimeout(() => {
+            this.proceedToLoading(roomCode);
+        }, 3000);
+    }
+    proceedToLoading(roomCode) {
+        const room = this.gameService.getRoom(roomCode);
+        if (!room)
+            return;
+        room.phase = 'loading';
+        this.server.to(roomCode).emit('loading-started');
+        room.loadingTimer = setTimeout(() => {
+            this.proceedToMatchStart(roomCode);
+        }, 5000);
+    }
+    proceedToMatchStart(roomCode) {
+        const startResult = this.gameService.startMatch(roomCode);
+        if (startResult.success) {
+            this.emitStateToRoom(roomCode, 'match-started');
+            this.scheduleTurnTimeout(roomCode);
+            console.log(`Match started after loading in room ${roomCode}`);
+        }
+    }
 };
 exports.GameGateway = GameGateway;
 __decorate([
@@ -215,6 +361,30 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], GameGateway.prototype, "handleChangeColor", null);
 __decorate([
+    (0, websockets_1.SubscribeMessage)('select-variant'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handleSelectVariant", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('confirm-variant'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handleConfirmVariant", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('end-turn'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handleEndTurn", null);
+__decorate([
     (0, websockets_1.SubscribeMessage)('move'),
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
@@ -222,6 +392,22 @@ __decorate([
     __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", void 0)
 ], GameGateway.prototype, "handleMove", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('use-skill'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handleUseSkill", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('pass-skill'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handlePassSkill", null);
 __decorate([
     (0, websockets_1.SubscribeMessage)('reconnect-room'),
     __param(0, (0, websockets_1.ConnectedSocket)()),
@@ -247,7 +433,7 @@ __decorate([
 exports.GameGateway = GameGateway = __decorate([
     (0, websockets_1.WebSocketGateway)({
         cors: {
-            origin: ['http://localhost:3000'],
+            origin: true,
             credentials: true,
         },
     }),

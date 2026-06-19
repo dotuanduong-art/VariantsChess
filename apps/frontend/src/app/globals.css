@@ -5,7 +5,26 @@
   --foreground: #f8fafc;
   --board-light: #e2e8f0;
   --board-dark: #475569;
-  --square-size: min(calc(60vw / 17), calc(82vh / 17));
+
+  --timer-panel-w: 10vw;
+  --info-panel-w: 25vw;
+  --board-panel-w: 65vw;
+  --skillbar-h: 120px;
+
+  /* 
+    Board takes min of remaining width (65vw - borders/padding)
+    and remaining height (100vh - 120px Action Bar).
+    Divided by 17 for 15x15 grid + 2 labels.
+  */
+  --square-size: min(
+    calc((var(--board-panel-w) - 48px) / 17),
+    calc((100vh - var(--skillbar-h) - 64px) / 17)
+  );
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -14,7 +33,6 @@ body {
   font-family: var(--font-press-start), monospace;
   margin: 0;
   padding: 0;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -22,40 +40,40 @@ body {
 /* Layout */
 .main-layout {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 1rem;
-  box-sizing: border-box;
+  flex-direction: column;   /* column: [main-row] trên, [skill-bar] dưới */
+  height: 100vh;
+  overflow: hidden;
 }
 
+/* Hàng chính chứa 3 cột */
 .game-container {
   display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  align-items: center;
-  width: 100%;
-  max-width: 1200px;
-}
-
-@media (min-width: 1024px) {
-  .game-container {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: center;
-  }
+  flex-direction: row;      /* ← đổi từ column sang row */
+  align-items: stretch;     /* ← các panel cao bằng nhau */
+  justify-content: stretch;
+  flex: 1;
+  min-height: 0;            /* ← QUAN TRỌNG: ngăn flex overflow */
+  width: 100vw;
+  max-width: 100vw;
+  gap: 0;
 }
 
 .board-section {
+  width: var(--board-panel-w);
+  flex: 1;
+  min-width: 0;             /* ← ngăn overflow */
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 12px;
+  padding: 12px;
 }
 
 .info-section {
-  width: 100%;
-  max-width: 350px;
+  width: var(--info-panel-w);
+  min-width: 280px;
+  flex-shrink: 0;
 }
 
 /* Lobby */
@@ -427,3 +445,412 @@ body {
   border: 1px solid rgba(239, 68, 68, 0.2);
   color: #ef4444;
 }
+
+/* Right Panel */
+.right-panel {
+  width: 100%;
+  max-width: 100%;          /* ← bỏ max-width: 280px cũ */
+  height: 100%;             /* ← thay calc cứng bằng 100% */
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #334155;
+  border-left: none;        /* dùng border của info-section thay */
+  border-radius: 0 0.75rem 0.75rem 0;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+/* ── 3. TIMER PANEL (trái) ──────────────────────────────────── */
+.timer-panel {
+  width: var(--timer-panel-w);
+  min-width: 80px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  padding: 32px 0;
+  background: rgba(15, 23, 42, 0.6);
+  border-right: 1px solid #1e2a3a;
+}
+
+/* Đồng hồ tròn */
+.timer-circle {
+  width: clamp(64px, 7vw, 96px);
+  height: clamp(64px, 7vw, 96px);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  position: relative;
+}
+
+.timer-circle.active  { border: 3px solid #c9a84c; }
+.timer-circle.waiting { border: 3px solid #334155; }
+
+.timer-circle .timer-label {
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.timer-circle .timer-value {
+  font-size: clamp(0.7rem, 1.2vw, 1rem);
+  font-weight: bold;
+  color: #f8fafc;
+}
+
+.timer-circle.active .timer-value  { color: #c9a84c; }
+.timer-circle.waiting .timer-value { color: #475569; }
+
+.timer-circle.terrain-active {
+  border: 3px solid #ef4444;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+  animation: terrain-pulse 0.8s infinite alternate ease-in-out;
+}
+
+.timer-circle.terrain-active .timer-value {
+  color: #ef4444;
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+@keyframes terrain-pulse {
+  from {
+    box-shadow: 0 0 5px rgba(239, 68, 68, 0.3);
+    transform: scale(1);
+  }
+  to {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
+    transform: scale(1.04);
+  }
+}
+
+/* ── 6. SKILL BAR (dưới) ────────────────────────────────────── */
+.skill-bar {
+  height: var(--skillbar-h);
+  width: calc((17 * var(--square-size)) + 20px);
+  max-width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  padding: 0 20px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.skill-hero-portrait {
+  width: 56px;
+  height: 56px;
+  border: 2px solid #c9a84c;
+  border-radius: 4px;
+  background: #1a1a2e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.skill-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.skill-icon {
+  width: 56px;
+  height: 56px;
+  border: 2px solid #c9a84c88;
+  border-radius: 4px;
+  background: #1a2040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.2s, opacity 0.2s;
+}
+
+.skill-icon:hover { border-color: #c9a84c; }
+
+.skill-icon.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.skill-key {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 0.5rem;
+  color: #c9a84c;
+  font-weight: bold;
+}
+
+.skill-mana-bar {
+  width: 56px;
+}
+
+.skill-mana-track {
+  height: 4px;
+  background: #1a1a3a;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.skill-mana-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4040cc, #8888ff);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.skill-mana-cost {
+  font-size: 0.45rem;
+  color: #8888ff;
+  text-align: center;
+  margin-top: 1px;
+}
+
+/* Custom keyframe animations for effects */
+@keyframes effect-bomb-pulse-filter {
+  from {
+    filter: drop-shadow(0px 0px 4px rgba(239, 68, 68, 0.5)) saturate(1.2);
+  }
+  to {
+    filter: drop-shadow(0px 0px 10px rgba(239, 68, 68, 1.0)) saturate(1.8);
+  }
+}
+
+@keyframes effect-bomb-pulse-transform {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes effect-flame-pulse-filter {
+  from {
+    filter: drop-shadow(0px 0px 4px rgba(249, 115, 22, 0.5)) saturate(1.3);
+  }
+  to {
+    filter: drop-shadow(0px 0px 12px rgba(249, 115, 22, 1.0)) saturate(1.9);
+  }
+}
+
+@keyframes effect-berserk-shake {
+  0% {
+    transform: translate(0.5px, 0.5px) rotate(0.2deg);
+  }
+  100% {
+    transform: translate(-0.5px, -0.5px) rotate(-0.2deg);
+  }
+}
+
+/* Lightning Ultimate Strike */
+.lightning-ultimate-strike {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  pointer-events: none;
+  background-image: url('/assets/effects/lightning/lightning_ultimate.png');
+  background-size: 1300% 100%; /* 13 horizontal frames */
+  background-repeat: no-repeat;
+  animation: play-lightning-ultimate 0.8s steps(12) forwards;
+}
+
+@keyframes play-lightning-ultimate {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 0%;
+  }
+}
+
+/* Lightning Stun Trap */
+.lightning-stun-trap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  background-image: url('/assets/effects/lightning/lightining_stun_trap.png');
+  background-size: 500% 100%; /* 5 horizontal frames */
+  background-repeat: no-repeat;
+  animation: play-lightning-stun-trap 0.8s steps(4) infinite;
+}
+
+@keyframes play-lightning-stun-trap {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 0%;
+  }
+}
+
+/* ── Skill Target Selection Visuals ────────────────────────── */
+@keyframes targetable-pulse {
+  from {
+    box-shadow: inset 0 0 0 3px #f59e0b, 0 0 4px rgba(245, 158, 11, 0.4);
+    background-color: rgba(245, 158, 11, 0.1);
+  }
+  to {
+    box-shadow: inset 0 0 0 3px #fbbf24, 0 0 12px rgba(251, 191, 36, 0.8);
+    background-color: rgba(245, 158, 11, 0.25);
+  }
+}
+
+.targetable {
+  animation: targetable-pulse 1s infinite alternate ease-in-out;
+  cursor: crosshair;
+  z-index: 10;
+}
+
+.targetable:hover {
+  background-color: rgba(245, 158, 11, 0.35) !important;
+  box-shadow: inset 0 0 0 4px #fbbf24, 0 0 16px rgba(251, 191, 36, 1);
+}
+
+.untargetable {
+  opacity: 0.45;
+  filter: grayscale(80%);
+  cursor: not-allowed;
+  pointer-events: auto;
+}
+
+/* Dynamite Landmine Indicator (Pulsing Red Laser/LED for Owner) */
+.dynamite-landmine-overlay {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #f87171 20%, #ef4444 60%, transparent 80%);
+  box-shadow: 0 0 10px #ef4444, 0 0 20px rgba(239, 68, 68, 0.4);
+  border: 2px solid #b91c1c;
+  z-index: 10;
+  pointer-events: none;
+  animation: landmine-pulse 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes landmine-pulse {
+  from {
+    transform: scale(0.8);
+    opacity: 0.6;
+    box-shadow: 0 0 6px #ef4444, 0 0 12px rgba(239, 68, 68, 0.3);
+  }
+  to {
+    transform: scale(1.1);
+    opacity: 1;
+    box-shadow: 0 0 14px #f87171, 0 0 26px rgba(239, 68, 68, 0.6);
+  }
+}
+
+/* Dynamite Explosion Shockwave & Fireball Animation */
+.dynamite-explosion-animation {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 60;
+  pointer-events: none;
+  border-radius: 4px;
+  background: radial-gradient(circle, rgba(254, 240, 138, 0.95) 0%, rgba(249, 115, 22, 0.8) 45%, rgba(220, 38, 38, 0.5) 70%, transparent 85%);
+  animation: explosion-blast 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes explosion-blast {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.2;
+    filter: brightness(2);
+  }
+  25% {
+    transform: scale(1.15);
+    opacity: 1;
+    filter: brightness(1.5) drop-shadow(0 0 15px #f97316);
+  }
+  60% {
+    transform: scale(1.3);
+    opacity: 0.8;
+    filter: brightness(1) drop-shadow(0 0 8px #ef4444);
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+    filter: brightness(0.5);
+  }
+}
+
+/* Berserk Badge */
+.berserk-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background-color: #ef4444;
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid white;
+  z-index: 15;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.8);
+  font-family: monospace;
+}
+
+/* Silenced Badge */
+.silenced-badge {
+  background-color: #8b5cf6;
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #c084fc;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
+  animation: silence-pulse 1s infinite alternate ease-in-out;
+  text-shadow: 0 0 2px black;
+  font-family: inherit;
+  letter-spacing: 0.05em;
+  display: inline-block;
+}
+
+@keyframes silence-pulse {
+  from {
+    box-shadow: 0 0 4px rgba(139, 92, 246, 0.4);
+    opacity: 0.8;
+  }
+  to {
+    box-shadow: 0 0 12px rgba(139, 92, 246, 1);
+    opacity: 1;
+  }
+}
+
+
+

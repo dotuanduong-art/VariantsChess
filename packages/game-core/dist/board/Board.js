@@ -1,13 +1,11 @@
 "use strict";
-// ============================================================
-// Board - 15x15 chess board representation
-// ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Board = exports.BOARD_SIZE = void 0;
 const Position_1 = require("./Position");
 exports.BOARD_SIZE = 15;
 class Board {
     grid;
+    cellEffects = new Map();
     constructor() {
         this.grid = Array.from({ length: exports.BOARD_SIZE }, () => Array.from({ length: exports.BOARD_SIZE }, () => null));
     }
@@ -50,6 +48,32 @@ class Board {
         this.setPiece(to, piece);
         return captured;
     }
+    getCellEffects(pos) {
+        const key = `${pos.col},${pos.row}`;
+        return this.cellEffects.get(key) || [];
+    }
+    setCellEffects(pos, effects) {
+        const key = `${pos.col},${pos.row}`;
+        if (effects.length === 0) {
+            this.cellEffects.delete(key);
+        }
+        else {
+            this.cellEffects.set(key, effects);
+        }
+    }
+    addCellEffect(pos, effect) {
+        const effects = this.getCellEffects(pos);
+        effects.push(effect);
+        this.setCellEffects(pos, effects);
+    }
+    removeCellEffect(pos, effectId) {
+        const effects = this.getCellEffects(pos);
+        const filtered = effects.filter(e => e.id !== effectId);
+        this.setCellEffects(pos, filtered);
+    }
+    getAllCellEffects() {
+        return this.cellEffects;
+    }
     /**
      * Create a deep copy of the board
      */
@@ -59,9 +83,15 @@ class Board {
             for (let col = 0; col < exports.BOARD_SIZE; col++) {
                 const piece = this.grid[row][col];
                 if (piece) {
-                    newBoard.grid[row][col] = { ...piece };
+                    newBoard.grid[row][col] = {
+                        ...piece,
+                        effects: piece.effects ? piece.effects.map(e => ({ ...e })) : [],
+                    };
                 }
             }
+        }
+        for (const [key, effects] of this.cellEffects.entries()) {
+            newBoard.cellEffects.set(key, effects.map(e => ({ ...e })));
         }
         return newBoard;
     }
@@ -69,8 +99,18 @@ class Board {
      * Serialize the board for network transfer
      */
     toSerializable() {
+        const serializedEffects = {};
+        for (const [key, effects] of this.cellEffects.entries()) {
+            serializedEffects[key] = effects.map(e => ({ ...e }));
+        }
         return {
-            grid: this.grid.map(row => row.map(piece => (piece ? { ...piece } : null))),
+            grid: this.grid.map(row => row.map(piece => piece
+                ? {
+                    ...piece,
+                    effects: piece.effects ? piece.effects.map(e => ({ ...e })) : [],
+                }
+                : null)),
+            cellEffects: serializedEffects,
         };
     }
     /**
@@ -82,8 +122,16 @@ class Board {
             for (let col = 0; col < exports.BOARD_SIZE; col++) {
                 const piece = data.grid[row]?.[col];
                 if (piece) {
-                    board.grid[row][col] = { ...piece };
+                    board.grid[row][col] = {
+                        ...piece,
+                        effects: piece.effects ? piece.effects.map(e => ({ ...e })) : [],
+                    };
                 }
+            }
+        }
+        if (data.cellEffects) {
+            for (const [key, effects] of Object.entries(data.cellEffects)) {
+                board.cellEffects.set(key, effects.map(e => ({ ...e })));
             }
         }
         return board;

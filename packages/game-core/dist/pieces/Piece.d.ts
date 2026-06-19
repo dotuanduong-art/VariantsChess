@@ -10,10 +10,12 @@ export declare enum Color {
     White = "White",
     Black = "Black"
 }
+import { Effect } from '../effect/Effect';
 export interface Piece {
     id: string;
     type: PieceType;
     color: Color;
+    effects: Effect[];
 }
 /**
  * Get the opponent's color
