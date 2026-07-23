@@ -12,7 +12,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service.js';
-import { Color } from 'game-core';
+import { Color, Position } from 'game-core';
 
 @WebSocketGateway({
   cors: {
@@ -32,10 +32,21 @@ export class GameGateway implements OnGatewayDisconnect {
 
     for (const player of room.players) {
       const playerState = room.match.serializeForPlayer(player.color);
-      this.server.to(player.socketId).emit(event, {
+      let payload: any = {
         ...extraData,
         ...playerState,
-      });
+      };
+
+      if (event === 'move-made' && extraData.isStealthMove && extraData.moverColor !== player.color) {
+        payload = {
+          ...payload,
+          from: null,
+          to: null,
+          stealthMove: true,
+        };
+      }
+
+      this.server.to(player.socketId).emit(event, payload);
     }
   }
 
@@ -221,13 +232,14 @@ export class GameGateway implements OnGatewayDisconnect {
   @SubscribeMessage('move')
   handleMove(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { roomCode: string; playerId: string; from: string; to: string }
+    @MessageBody() data: { roomCode: string; playerId: string; from: string; to: string; moveType?: string }
   ): void {
     const result = this.gameService.makeMove(
       data.roomCode,
       data.playerId,
       data.from,
-      data.to
+      data.to,
+      data.moveType
     );
 
     if (!result.success) {
@@ -235,10 +247,15 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
+    const room = this.gameService.getRoom(data.roomCode);
+    const mover = room?.players.find(p => p.id === data.playerId);
+
     this.emitStateToRoom(data.roomCode, 'move-made', {
       from: data.from,
       to: data.to,
       capturedPiece: result.capturedPiece,
+      isStealthMove: result.isStealthMove,
+      moverColor: mover?.color,
     });
 
     // Check for game over
@@ -258,6 +275,55 @@ export class GameGateway implements OnGatewayDisconnect {
     } else {
       this.scheduleTurnTimeout(data.roomCode);
     }
+  }
+
+  // ─── Sacrifice Piece ─────────────────────────────────────
+  @SubscribeMessage('sacrifice-piece')
+  handleSacrificePiece(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string; position: Position; pieceId: string }
+  ): void {
+    const room = this.gameService.getRoom(data.roomCode);
+    if (!room || !room.match) {
+      client.emit('error', { message: 'Room or match not found' });
+      return;
+    }
+
+    const player = room.players.find(p => p.id === data.playerId);
+    if (!player) {
+      client.emit('error', { message: 'Player not found in room' });
+      return;
+    }
+
+    const result = room.match.submitAction({
+      type: 'SACRIFICE_PIECE',
+      pieceId: data.pieceId,
+      position: data.position,
+      player: player.color,
+    });
+
+    if (!result.success) {
+      client.emit('error', { message: result.reason || 'Sacrifice rejected' });
+      return;
+    }
+
+    this.emitStateToRoom(data.roomCode, 'move-made');
+    this.scheduleTurnTimeout(data.roomCode);
+  }
+
+  // ─── Get Enemy Piece Moves ───────────────────────────────
+  @SubscribeMessage('get-enemy-piece-moves')
+  handleGetEnemyPieceMoves(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { roomCode: string; playerId: string; position: Position }
+  ): void {
+    const room = this.gameService.getRoom(data.roomCode);
+    if (!room || !room.match) {
+      client.emit('error', { message: 'Room or match not found' });
+      return;
+    }
+    const moves = room.match.getLegalMovesAt(data.position);
+    client.emit('enemy-piece-moves', { position: data.position, moves });
   }
 
   // ─── Use Skill ───────────────────────────────────────────

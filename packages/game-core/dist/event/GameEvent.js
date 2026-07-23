@@ -36,8 +36,19 @@ function createOnMoveEvent(turnNumber, activePlayer, pieceId, from, to) {
 function createOnBeforeCaptureEvent(turnNumber, activePlayer, attackerId, capturedPieceId, from, to) {
     return { type: 'OnBeforeCapture', turnNumber, activePlayer, payload: { attackerId, capturedPieceId, from, to } };
 }
-function createOnCaptureEvent(turnNumber, activePlayer, attackerId, capturedPieceId, from, to) {
-    return { type: 'OnCapture', turnNumber, activePlayer, payload: { attackerId, capturedPieceId, from, to } };
+function createOnCaptureEvent(turnNumber, activePlayer, attackerId, capturedPieceId, from, to, capturedPieceSnapshot) {
+    return {
+        type: 'OnCapture',
+        turnNumber,
+        activePlayer,
+        payload: {
+            attackerId,
+            capturedPieceId,
+            from,
+            to,
+            capturedPieceSnapshot,
+        },
+    };
 }
 function createOnPieceDeathEvent(turnNumber, activePlayer, pieceId, position, killedBy, killerId) {
     return { type: 'OnPieceDeath', turnNumber, activePlayer, payload: { pieceId, position, killedBy, killerId } };
@@ -61,8 +72,8 @@ function createOnPieceDestroyedEvent(turnNumber, activePlayer, pieceSnapshot, po
 function createOnPieceSpawnEvent(turnNumber, activePlayer, pieceId, position) {
     return { type: 'OnPieceSpawn', turnNumber, activePlayer, payload: { pieceId, position } };
 }
-function createOnSkillUsedEvent(turnNumber, activePlayer, skillId, targets) {
-    return { type: 'OnSkillUsed', turnNumber, activePlayer, payload: { skillId, targets } };
+function createOnSkillUsedEvent(turnNumber, activePlayer, skillId, targets, actualCost) {
+    return { type: 'OnSkillUsed', turnNumber, activePlayer, payload: { skillId, targets, actualCost } };
 }
 function createOnEffectAppliedEvent(turnNumber, activePlayer, effect) {
     return { type: 'OnEffectApplied', turnNumber, activePlayer, payload: { effect } };

@@ -38,6 +38,10 @@ export default function Board() {
     legalMoves,
     lastMove,
     selectSquare,
+    sacrificePiece,
+    variantState,
+    currentTurn,
+    hasMoved,
   } = useGameStore();
 
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
@@ -232,8 +236,30 @@ export default function Board() {
             </div>
           )}
           {(!contextMenu.piece.effects || contextMenu.piece.effects.length === 0) && (
-            <div className="text-[9px] text-slate-600 italic">No active effects</div>
+            <div className="text-[9px] text-slate-650 italic">No active effects</div>
           )}
+
+          {/* Sacrifice option under Devil's Toll */}
+          {(() => {
+            const canSacrifice =
+              variantState?.devilTollActive === true &&
+              currentTurn === playerColor &&
+              !hasMoved &&
+              contextMenu.piece.color === playerColor &&
+              contextMenu.piece.type !== 'King';
+            if (!canSacrifice) return null;
+            return (
+              <button
+                className="mt-2 text-xs font-bold text-red-300 hover:text-white bg-red-950 hover:bg-red-800 border border-red-900/60 rounded-md py-1.5 px-3 transition-all active:scale-95 cursor-pointer shadow-sm text-center leading-none"
+                onClick={() => {
+                  sacrificePiece(contextMenu.pos, contextMenu.piece.id);
+                  setContextMenu(null);
+                }}
+              >
+                Sacrifice Piece (+{ctxApValues?.loss || 0} AP)
+              </button>
+            );
+          })()}
         </div>
       )}
     </>

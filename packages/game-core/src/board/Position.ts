@@ -7,6 +7,10 @@ export interface Position {
   row: number; // 0-14
 }
 
+export interface LegalMove extends Position {
+  moveType?: 'normal' | 'capture' | 'zombie_bite';
+}
+
 const COL_LABELS = 'ABCDEFGHIJKLMNO';
 
 /**

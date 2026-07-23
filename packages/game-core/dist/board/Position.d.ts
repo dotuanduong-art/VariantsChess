@@ -2,6 +2,9 @@ export interface Position {
     col: number;
     row: number;
 }
+export interface LegalMove extends Position {
+    moveType?: 'normal' | 'capture' | 'zombie_bite';
+}
 /**
  * Convert a Position to algebraic notation (e.g., { col: 0, row: 0 } → "A1")
  */

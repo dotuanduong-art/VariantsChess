@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { VARIANTS_LIST, SkillInfo } from '../lib/variantsData';
+import { VARIANTS_LIST, SkillInfo, getVariantImageSrc } from '../lib/variantsData';
 import { Board as BoardClass, Color } from 'game-core';
 import { getSocket } from '../lib/socket';
 
@@ -18,6 +18,7 @@ export default function ActionBar() {
     turnNumber,
     hasMoved,
     skillsUsedThisTurn,
+    skillsUsedThisTurnIds,
     currentTurn,
     variantState,
     board,
@@ -31,31 +32,94 @@ export default function ActionBar() {
     availableSkillTargets,
     currentRequirementIndex,
     graveyard,
+    whitePlayerEffects,
+    blackPlayerEffects,
   } = useGameStore();
+
 
   const [hoveredSkill, setHoveredSkill] = useState<SkillInfo | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const skillSectionRef = useRef<HTMLDivElement>(null);
   const [imgError, setImgError] = useState<Record<string, boolean>>({});
-
-  const handleImgError = (key: string) => {
-    setImgError((prev) => ({ ...prev, [key]: true }));
-  };
+  const [ultSelectingChoice, setUltSelectingChoice] = useState(false);
 
   // Setup Yours vs Opponent mapping
   const isWhite = playerColor === Color.White;
   const yourVariantId = isWhite ? whiteVariantId : blackVariantId;
-  const yourVariant = VARIANTS_LIST.find((v) => v.id === yourVariantId) || VARIANTS_LIST[0];
+  const baseVariant = VARIANTS_LIST.find((v) => v.id === yourVariantId) || VARIANTS_LIST[0];
+  const yourVariant = { ...baseVariant };
+
+  // Dynamic Ultimate swap for Verdant Dragon
+  const isDragonWrathReady = yourVariantId === 'verdant_dragon' && (variantState?.dragonCounter ?? 0) >= 105; // Wait, 100 or more
+  const dragonCounter = variantState?.dragonCounter ?? 0;
+  const isDragonWrath = yourVariantId === 'verdant_dragon' && dragonCounter >= 100;
+  if (isDragonWrath) {
+    yourVariant.ultimate = {
+      id: 'verdant_dragon_ultimate',
+      name: "Dragon's Wrath",
+      cost: 0,
+      targetType: 'Directional 15x4 Zone',
+      description: "Giải phóng Cơn Thịnh Nộ của Rồng: Làm choáng (Stun) toàn bộ quân địch trong hàng 6-9 (15x4) trong 2 vòng đấu, giảm 3 AP của đối thủ, sau đó reset Dragon Counter về 0.",
+      duration: 'Instant',
+    };
+  }
+
   const yourAP = isWhite ? whiteAP : blackAP;
+  const yourEffects = isWhite ? whitePlayerEffects : blackPlayerEffects;
+  const isEmeraldDomainActive = yourEffects?.some((e: any) => e.type === 'emerald_domain') ?? false;
+
+
+  const zombieCount = (() => {
+    if (yourVariantId !== 'zombie' || !board || !board.grid) return 0;
+    let count = 0;
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        const piece = board.grid[r]?.[c];
+        if (piece && piece.color === playerColor && piece.effects?.some((e: any) => e.type === 'zombie')) {
+          count++;
+        }
+      }
+    }
+    return count;
+  })();
+
+  const isZombieCapReached = yourVariantId === 'zombie' && zombieCount >= 5;
 
   const getSkill1Cost = () => {
-    if (yourVariantId === 'guardian') {
-      const lostCount = (graveyard || []).filter((e: any) => e.piece.color === playerColor).length;
-      return lostCount >= 8 ? 2 : 4;
-    }
-    return Number(yourVariant.skill1.cost);
+    // Read from backend (already includes emerald_domain +1 if applicable)
+    const skillId = yourVariant?.skill1?.id;
+    const fromBackend = skillId ? availableSkillTargets[skillId]?.currentCost : undefined;
+    if (fromBackend !== undefined) return fromBackend;
+    // Fallback when it is not our turn (availableSkillTargets is empty)
+    const staticCost = Number(yourVariant.skill1.cost);
+    return isEmeraldDomainActive ? staticCost + 1 : staticCost;
   };
   const skill1Cost = getSkill1Cost();
+
+  const getSkill2Cost = () => {
+    const skillId = yourVariant?.skill2?.id;
+    const fromBackend = skillId ? availableSkillTargets[skillId]?.currentCost : undefined;
+    if (fromBackend !== undefined) return fromBackend;
+    // Fallback when not our turn
+    if (yourVariantId === 'earth') {
+      // earth skill2 cost is state-driven; static fallback only
+      return variantState?.skill2CostThisTurn ?? Number(yourVariant.skill2.cost);
+    }
+    const staticCost = Number(yourVariant.skill2.cost);
+    return isEmeraldDomainActive ? staticCost + 1 : staticCost;
+  };
+  const skill2Cost = getSkill2Cost();
+
+  const getUltCost = () => {
+    const skillId = yourVariant?.ultimate?.id;
+    const fromBackend = skillId ? availableSkillTargets[skillId]?.currentCost : undefined;
+    if (fromBackend !== undefined) return fromBackend;
+    // Fallback when not our turn — use static cost from variantsData
+    const staticCost = Number(yourVariant.ultimate.cost) || 0;
+    return isEmeraldDomainActive ? staticCost + 1 : staticCost;
+  };
+  const ultCost = getUltCost();
+
 
   console.log('ActionBar state check:', { playerColor, isWhite, yourVariantId, yourAP, whiteAP, blackAP, turnNumber, hasMoved, skillsUsedThisTurn, currentTurn });
 
@@ -67,11 +131,23 @@ export default function ActionBar() {
   let turnStatus = 'WAITING FOR OPPONENT';
   let statusColor = 'text-slate-500 bg-slate-950/60 border-slate-900';
 
+  const maxSkills = yourVariant.maxSkillsPerTurn ?? 1;
+
+  const handleImgError = (key: string) => {
+    setImgError((prev) => ({ ...prev, [key]: true }));
+  };
+
+  useEffect(() => {
+    if (!isMyTurn) {
+      setUltSelectingChoice(false);
+    }
+  }, [isMyTurn]);
+
   if (isMyTurn) {
     if (!hasMoved) {
       turnStatus = 'MOVE REQUIRED';
       statusColor = 'text-red-400 bg-red-950/20 border-red-900/40 animate-pulse';
-    } else if (skillsUsedThisTurn < 1) {
+    } else if (skillsUsedThisTurn < maxSkills) {
       turnStatus = 'SKILL AVAILABLE';
       statusColor = 'text-yellow-400 bg-yellow-950/20 border-yellow-900/40';
     } else {
@@ -83,15 +159,20 @@ export default function ActionBar() {
   // Dynamic Resource lookup
   const getResourceValue = () => {
     if (!yourVariantId) return null;
-    if (yourVariantId === 'zombie') return `${variantState.zombieCount ?? 2}/5`;
-    if (yourVariantId === 'kaze') return `${variantState.kunaiCount ?? 4}/6`;
+    if (yourVariantId === 'verdant_dragon') return `${variantState?.dragonCounter ?? 0}`;
+    if (yourVariantId === 'time') return `${variantState.ultimateUseCount ?? 0}`;
+    if (yourVariantId === 'zombie') return `${zombieCount}/5`;
+    if (yourVariantId === 'kaze') return `${variantState.windSigils ?? 6}/6`;
     if (yourVariantId === 'dynamite') return `${variantState.bombCount ?? 0}`;
     if (yourVariantId === 'magician') return `${variantState.domainCount ?? 0}`;
     if (yourVariantId === 'guardian') return `${variantState.shieldCount ?? 0}`;
-    if (yourVariantId === 'ruler') return `Law ${variantState.lawActive ?? 1}`;
+    if (yourVariantId === 'ruler') {
+      return `Law ${variantState.currentLaw ?? variantState.lawActive ?? 1}`;
+    }
     if (yourVariantId === 'angel') {
       return variantState[`judgmentWindowActive_${playerColor}`] ? `Jdg ${variantState[`judgmentWindowRemainingTurns_${playerColor}`]}` : null;
     }
+
     
     if (yourVariantId === 'lightning') {
       if (!board) return '0';
@@ -124,19 +205,40 @@ export default function ActionBar() {
   const ultCooldownTurns = variantState?.cooldowns?.[yourVariant.ultimate.id] || 0;
   const isUltCooldown = ultCooldownTurns > 0;
 
-  const isSkill1Available = isMyTurn && !isSkill1Cooldown && yourAP >= skill1Cost && skillsUsedThisTurn < 1 && (!targetSelectionMode || activeSkillId === yourVariant.skill1.id);
-  const isSkill2Available = isMyTurn && !isSkill2Cooldown && yourAP >= Number(yourVariant.skill2.cost) && skillsUsedThisTurn < 1 && (!targetSelectionMode || activeSkillId === yourVariant.skill2.id);
-  const isUltAvailable = isMyTurn && !isUltCooldown && yourAP >= Number(yourVariant.ultimate.cost) && skillsUsedThisTurn < 1 && (!targetSelectionMode || activeSkillId === yourVariant.ultimate.id);
+  // Silence tracking
+  const silenceEffect = yourEffects?.find((e: any) => e.type === 'silence');
+  const isSkill1Silenced = !!silenceEffect;
+  const isSkill2Silenced = !!silenceEffect;
+  const isUltSilenced = !!silenceEffect && silenceEffect.metadata?.blockUltimate !== false;
+
+  const canAffordAP = (cost: number) => {
+    const isPirate = yourVariantId === 'pirate';
+    if (isPirate) {
+      return yourAP >= 0 && (yourAP - cost >= -10);
+    }
+    return yourAP >= cost;
+  };
+
+  const isSkill1Available = isMyTurn && !isSkill1Silenced && !isSkill1Cooldown && canAffordAP(skill1Cost) && skillsUsedThisTurn < maxSkills && (!targetSelectionMode || activeSkillId === yourVariant.skill1.id) && !skillsUsedThisTurnIds.includes(yourVariant.skill1.id) && !isZombieCapReached;
+  const isSkill2Available = isMyTurn && !isSkill2Silenced && !isSkill2Cooldown && canAffordAP(skill2Cost) && skillsUsedThisTurn < maxSkills && (!targetSelectionMode || activeSkillId === yourVariant.skill2.id) && !skillsUsedThisTurnIds.includes(yourVariant.skill2.id) && !isZombieCapReached;
+  const isUltAvailable = isMyTurn && !isUltSilenced && !isUltCooldown && canAffordAP(ultCost) && skillsUsedThisTurn < maxSkills && (!targetSelectionMode || activeSkillId === yourVariant.ultimate.id || activeSkillId === 'time_grand_rewind' || activeSkillId === 'time_time_freeze') && !skillsUsedThisTurnIds.includes(yourVariant.ultimate.id) && !skillsUsedThisTurnIds.includes('time_grand_rewind') && !skillsUsedThisTurnIds.includes('time_time_freeze');
+
+  const isS1ChoiceAvailable = isMyTurn && !isUltSilenced && !isUltCooldown && canAffordAP(ultCost) && skillsUsedThisTurn < maxSkills && !skillsUsedThisTurnIds.includes('time_grand_rewind');
+  const isS2ChoiceAvailable = isMyTurn && !isUltSilenced && !isUltCooldown && canAffordAP(ultCost) && skillsUsedThisTurn < maxSkills && !skillsUsedThisTurnIds.includes('time_time_freeze');
 
   // Handler for skill selection/activation
   const handleSkillClick = (skillId: string, apCost: number) => {
+    setUltSelectingChoice(false);
     const isSkill1 = skillId === yourVariant.skill1.id;
     const isSkill2 = skillId === yourVariant.skill2.id;
+    const isUlt = skillId === 'time_grand_rewind' || skillId === 'time_time_freeze' || skillId === yourVariant.ultimate.id;
 
     const isCooldown = isSkill1 ? isSkill1Cooldown : isSkill2 ? isSkill2Cooldown : isUltCooldown;
-    const isAvailable = isMyTurn && !isCooldown && yourAP >= apCost;
+    const isSilenced = isSkill1 ? isSkill1Silenced : isSkill2 ? isSkill2Silenced : isUltSilenced;
+    const isAvailable = isMyTurn && !isCooldown && !isSilenced && canAffordAP(apCost);
 
-    if (!isAvailable || skillsUsedThisTurn >= 1) return;
+    if (!isAvailable || skillsUsedThisTurn >= maxSkills || skillsUsedThisTurnIds.includes(skillId)) return;
+    if (isZombieCapReached && (isSkill1 || isSkill2)) return;
 
     if (activeSkillId === skillId) {
       cancelSkill();
@@ -149,9 +251,37 @@ export default function ActionBar() {
   const handleSkillHover = (skill: SkillInfo, e: React.MouseEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     let skillWithCorrectCost = skill;
-    if (skill.id === yourVariant.skill1.id) {
-      skillWithCorrectCost = { ...skill, cost: skill1Cost };
+    
+    if (yourVariantId === 'time' && ultSelectingChoice) {
+      if (skill.id === yourVariant.skill1.id) {
+        skillWithCorrectCost = {
+          id: 'time_grand_rewind',
+          name: 'Grand Rewind',
+          cost: ultCost,
+          targetType: 'Global',
+          description: 'Quay ngược vị trí bàn cờ về 5 rounds trước (10 turns trước).',
+          duration: 'Instant'
+        };
+      } else if (skill.id === yourVariant.skill2.id) {
+        skillWithCorrectCost = {
+          id: 'time_time_freeze',
+          name: 'Time Freeze',
+          cost: ultCost,
+          targetType: 'Global',
+          description: 'Đóng băng đối thủ trong 6 rounds: mọi nước đi của địch (trừ King) bị Stun với duration bằng số rounds còn lại.',
+          duration: '6 rounds'
+        };
+      }
+    } else {
+      if (skill.id === yourVariant.skill1.id) {
+        skillWithCorrectCost = { ...skill, cost: skill1Cost };
+      } else if (skill.id === yourVariant.skill2.id) {
+        skillWithCorrectCost = { ...skill, cost: skill2Cost };
+      } else if (skill.id === yourVariant.ultimate.id) {
+        skillWithCorrectCost = { ...skill, cost: ultCost };
+      }
     }
+    
     setHoveredSkill(skillWithCorrectCost);
     // Position tooltip centered above the button, using fixed coords with screen boundaries
     const tooltipWidth = 320;
@@ -204,16 +334,36 @@ export default function ActionBar() {
       
       if (pressedKey === keybindings.skill1.toLowerCase()) {
         e.preventDefault();
-        if (isSkill1Cooldown) return;
-        handleSkillClick(yourVariant.skill1.id, skill1Cost);
+        if (yourVariantId === 'time' && ultSelectingChoice) {
+          if (isUltCooldown) return;
+          handleSkillClick('time_grand_rewind', ultCost);
+          setUltSelectingChoice(false);
+        } else {
+          if (isSkill1Cooldown) return;
+          handleSkillClick(yourVariant.skill1.id, skill1Cost);
+        }
       } else if (pressedKey === keybindings.skill2.toLowerCase()) {
         e.preventDefault();
-        if (isSkill2Cooldown) return;
-        handleSkillClick(yourVariant.skill2.id, Number(yourVariant.skill2.cost));
+        if (yourVariantId === 'time' && ultSelectingChoice) {
+          if (isUltCooldown) return;
+          handleSkillClick('time_time_freeze', ultCost);
+          setUltSelectingChoice(false);
+        } else {
+          if (isSkill2Cooldown) return;
+          handleSkillClick(yourVariant.skill2.id, skill2Cost);
+        }
       } else if (pressedKey === keybindings.ultimate.toLowerCase()) {
         e.preventDefault();
         if (isUltCooldown) return;
-        handleSkillClick(yourVariant.ultimate.id, Number(yourVariant.ultimate.cost));
+        if (yourVariantId === 'time') {
+          if (activeSkillId === 'time_grand_rewind' || activeSkillId === 'time_time_freeze') {
+            cancelSkill();
+          } else {
+            setUltSelectingChoice((prev) => !prev);
+          }
+        } else {
+          handleSkillClick(yourVariant.ultimate.id, ultCost);
+        }
       }
     };
 
@@ -227,6 +377,7 @@ export default function ActionBar() {
     yourVariant,
     yourAP,
     skillsUsedThisTurn,
+    skillsUsedThisTurnIds,
     activeSkillId,
     isSkill1Cooldown,
     isSkill2Cooldown,
@@ -234,7 +385,13 @@ export default function ActionBar() {
     roomCode,
     playerId,
     targetSelectionMode,
-    cancelSkill
+    cancelSkill,
+    skill1Cost,
+    skill2Cost,
+    ultCost,
+    ultSelectingChoice,
+    isS1ChoiceAvailable,
+    isS2ChoiceAvailable
   ]);
 
   return (
@@ -250,7 +407,7 @@ export default function ActionBar() {
           <div className="w-20 h-20 rounded-md border border-[#d8c39e] shadow-[0_0_10px_rgba(216,195,158,0.25)] flex items-center justify-center overflow-hidden shrink-0 relative bg-[#1b1c31]">
             {!imgError[`variant_${yourVariant.id}`] ? (
               <img
-                src={`/assets/variants/${yourVariant.id}.png`}
+                src={getVariantImageSrc(yourVariant.id)}
                 alt={yourVariant.name}
                 className="w-full h-full object-cover"
                 onError={() => handleImgError(`variant_${yourVariant.id}`)}
@@ -258,8 +415,24 @@ export default function ActionBar() {
             ) : (
               <span className="text-5xl select-none">{yourVariant.artwork}</span>
             )}
-            {resourceValue !== null && (
-              <div className="absolute -bottom-1 -right-1 bg-teal-950 border border-teal-500 rounded px-1 text-[8px] font-mono text-teal-300 font-bold z-10 leading-none shadow-md">
+            {yourVariantId === 'kaze' ? (
+              <div className="absolute bottom-1 left-0 right-0 flex justify-center gap-0.5 z-10">
+                {Array.from({ length: 6 }).map((_, idx) => {
+                  const active = idx < (variantState.windSigils ?? 6);
+                  return (
+                    <div
+                      key={idx}
+                      className={`w-1.5 h-1.5 rounded-full border transition-all duration-300 ${
+                        active
+                          ? 'bg-teal-400 border-teal-300 shadow-[0_0_6px_rgba(45,212,191,0.85)]'
+                          : 'bg-slate-800 border-slate-700 opacity-30'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            ) : resourceValue !== null && (
+              <div className="absolute bottom-0.5 right-0.5 bg-teal-950 border border-teal-500 rounded px-1 text-[8px] font-mono text-teal-300 font-bold z-10 leading-none shadow-md">
                 {resourceValue}
               </div>
             )}
@@ -271,7 +444,42 @@ export default function ActionBar() {
             <div className="flex items-center mt-1">
               <span className="text-[8px] px-1.5 py-0.5 border border-slate-700 bg-slate-800/40 rounded text-slate-400 uppercase font-bold tracking-wider font-sans shrink-0 leading-none">{yourVariant.role}</span>
             </div>
+            {yourVariantId === 'ruler' && (() => {
+              const rounds = variantState.lawRemainingRounds ?? 0;
+              const domain = variantState.domainActive === true;
+              const domainRounds = variantState.domainRemainingRounds ?? 0;
+              
+              let statusText = '';
+              if (rounds > 0) statusText += `${rounds} rounds left`;
+              if (domain) {
+                if (statusText) statusText += ' | ';
+                statusText += `Domain: ${domainRounds} rounds left`;
+              }
+              
+              if (!statusText) return null;
+              return (
+                <span className="text-[9px] font-mono text-teal-400 font-bold mt-1 block">
+                  {statusText}
+                </span>
+              );
+            })()}
+
+            {yourVariantId === 'verdant_dragon' && (
+              <div className="mt-1 w-full max-w-[120px]">
+                <div className="flex items-center justify-between text-[7px] text-emerald-400 font-mono font-bold leading-none mb-0.5">
+                  <span>DRAGON</span>
+                  <span>{variantState?.dragonCounter ?? 0}/100</span>
+                </div>
+                <div className="w-full h-1 bg-slate-850 rounded-full overflow-hidden border border-slate-950">
+                  <div 
+                    className="h-full bg-emerald-500 transition-all duration-300 shadow-[0_0_4px_#10b981]" 
+                    style={{ width: `${Math.min(variantState?.dragonCounter ?? 0, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
+
         </div>
 
         {/* CURRENT AP */}
@@ -332,28 +540,54 @@ export default function ActionBar() {
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setSkillDetail({ skill: { ...yourVariant.skill1, cost: skill1Cost }, variantId: yourVariant.id, x: e.clientX, y: e.clientY });
+              setSkillDetail({ skill: { ...(ultSelectingChoice ? { id: 'time_grand_rewind', name: 'Grand Rewind', cost: ultCost, targetType: 'Global', duration: 'Instant', description: 'Quay ngược vị trí bàn cờ về 5 rounds trước (10 turns trước).' } : yourVariant.skill1), cost: ultSelectingChoice ? ultCost : skill1Cost }, variantId: yourVariant.id, x: e.clientX, y: e.clientY });
             }}
           >
             <span className="absolute -top-1.5 -left-1.5 px-1 bg-slate-900 border border-slate-700 rounded flex items-center justify-center text-[8px] font-bold text-slate-300 font-mono z-20 uppercase">{keybindings.skill1}</span>
-            <span className={`absolute -bottom-1.5 -right-1.5 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold font-mono z-20 border ${yourAP < skill1Cost ? 'bg-red-955 border-red-700 text-red-400' : 'bg-blue-955 border-blue-700 text-blue-400'}`}>
-              {skill1Cost}
+            <span className={`absolute -bottom-1.5 -right-1.5 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold font-mono z-20 border ${!canAffordAP(ultSelectingChoice ? ultCost : skill1Cost) ? 'bg-red-955 border-red-700 text-red-400' : ultSelectingChoice ? 'bg-purple-955 border-purple-700 text-purple-400' : 'bg-blue-955 border-blue-700 text-blue-400'}`}>
+              {ultSelectingChoice ? ultCost : skill1Cost}
             </span>
-            {isSkill1Cooldown && (
+            {isSkill1Cooldown && !ultSelectingChoice && (
               <div className="absolute inset-0 bg-black/75 z-10 flex items-center justify-center rounded-lg pointer-events-none">
                 <span className="text-sm font-black text-white font-mono">{skill1CooldownTurns}</span>
               </div>
             )}
-            <button onClick={() => handleSkillClick(yourVariant.skill1.id, skill1Cost)} className={`w-[52px] h-[52px] rounded-lg border flex items-center justify-center font-bold relative transition-all overflow-hidden ${!isSkill1Available ? 'bg-[#0b0c14] border-slate-900 text-slate-650 opacity-55 cursor-not-allowed' : 'bg-[#181a3d] border-blue-500 text-blue-300 hover:bg-[#202352] shadow-[0_0_10px_rgba(59,130,246,0.25)] active:scale-95 cursor-pointer'} ${activeSkillId === yourVariant.skill1.id ? 'ring-2 ring-yellow-400 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]' : ''}`}>
-              {!imgError[`${yourVariant.id}_skill1`] ? (
+            <button 
+              onClick={() => {
+                if (yourVariantId === 'time' && ultSelectingChoice) {
+                  handleSkillClick('time_grand_rewind', ultCost);
+                  setUltSelectingChoice(false);
+                } else {
+                  handleSkillClick(yourVariant.skill1.id, skill1Cost);
+                }
+              }} 
+              className={`w-[52px] h-[52px] rounded-lg border flex items-center justify-center font-bold relative transition-all overflow-hidden 
+                ${!(ultSelectingChoice ? isS1ChoiceAvailable : isSkill1Available) 
+                  ? 'bg-[#0b0c14] border-slate-900 text-slate-650 opacity-55 cursor-not-allowed' 
+                  : ultSelectingChoice 
+                    ? 'bg-[#29133d] border-purple-500 text-purple-300 hover:bg-[#381a54] shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 cursor-pointer border-purple-400' 
+                    : 'bg-[#181a3d] border-blue-500 text-blue-300 hover:bg-[#202352] shadow-[0_0_10px_rgba(59,130,246,0.25)] active:scale-95 cursor-pointer'
+                } 
+                ${(activeSkillId === yourVariant.skill1.id || activeSkillId === 'time_grand_rewind') 
+                  ? 'ring-2 ring-yellow-400 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]' 
+                  : ultSelectingChoice 
+                    ? 'ring-1 ring-purple-400' 
+                    : ''
+                }`}
+            >
+              {!imgError[`${yourVariant.id}_skill1`] && !ultSelectingChoice ? (
                 <img src={`/assets/skills/${yourVariant.id}_skill1.png`} alt={yourVariant.skill1.name} className="w-full h-full object-cover" onError={() => handleImgError(`${yourVariant.id}_skill1`)} />
               ) : (
-                <span className="text-[12px] text-blue-400 font-bold font-mono">S1</span>
+                <span className={`text-[12px] font-bold font-mono ${ultSelectingChoice ? 'text-purple-300' : 'text-blue-400'}`}>
+                  {ultSelectingChoice ? 'ULT A' : 'S1'}
+                </span>
               )}
             </button>
           </div>
-          <span className="text-[7px] text-slate-500 font-mono font-bold leading-none mt-0.5">S1</span>
-          <span className="text-[8px] text-slate-400 font-sans truncate max-w-[80px] text-center leading-none mt-0.5" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>{yourVariant.skill1.name}</span>
+          <span className="text-[7px] text-slate-500 font-mono font-bold leading-none mt-0.5">{ultSelectingChoice ? 'ULT A' : 'S1'}</span>
+          <span className="text-[8px] text-slate-400 font-sans truncate max-w-[80px] text-center leading-none mt-0.5" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+            {ultSelectingChoice ? 'Grand Rewind' : yourVariant.skill1.name}
+          </span>
         </div>
 
         {/* Skill 2 Slot */}
@@ -365,28 +599,54 @@ export default function ActionBar() {
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setSkillDetail({ skill: yourVariant.skill2, variantId: yourVariant.id, x: e.clientX, y: e.clientY });
+              setSkillDetail({ skill: { ...(ultSelectingChoice ? { id: 'time_time_freeze', name: 'Time Freeze', cost: ultCost, targetType: 'Global', duration: '6 rounds', description: 'Đóng băng đối thủ trong 6 rounds: mọi nước đi của địch (trừ King) bị Stun với duration bằng số rounds còn lại.' } : yourVariant.skill2), cost: ultSelectingChoice ? ultCost : skill2Cost }, variantId: yourVariant.id, x: e.clientX, y: e.clientY });
             }}
           >
             <span className="absolute -top-1.5 -left-1.5 px-1 bg-slate-900 border border-slate-700 rounded flex items-center justify-center text-[8px] font-bold text-slate-300 font-mono z-20 uppercase">{keybindings.skill2}</span>
-            <span className={`absolute -bottom-1.5 -right-1.5 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold font-mono z-20 border ${yourAP < Number(yourVariant.skill2.cost) ? 'bg-red-955 border-red-700 text-red-400' : 'bg-blue-955 border-blue-700 text-blue-400'}`}>
-              {yourVariant.skill2.cost}
+            <span className={`absolute -bottom-1.5 -right-1.5 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold font-mono z-20 border ${!canAffordAP(ultSelectingChoice ? ultCost : skill2Cost) ? 'bg-red-955 border-red-700 text-red-400' : ultSelectingChoice ? 'bg-purple-955 border-purple-700 text-purple-400' : 'bg-blue-955 border-blue-700 text-blue-400'}`}>
+              {ultSelectingChoice ? ultCost : skill2Cost}
             </span>
-            {isSkill2Cooldown && (
+            {isSkill2Cooldown && !ultSelectingChoice && (
               <div className="absolute inset-0 bg-black/75 z-10 flex items-center justify-center rounded-lg pointer-events-none">
                 <span className="text-sm font-black text-white font-mono">{skill2CooldownTurns}</span>
               </div>
             )}
-            <button onClick={() => handleSkillClick(yourVariant.skill2.id, Number(yourVariant.skill2.cost))} className={`w-[52px] h-[52px] rounded-lg border flex items-center justify-center font-bold relative transition-all overflow-hidden ${!isSkill2Available ? 'bg-[#0b0c14] border-slate-900 text-slate-650 opacity-55 cursor-not-allowed' : 'bg-[#181a3d] border-blue-500 text-blue-300 hover:bg-[#202352] shadow-[0_0_10px_rgba(59,130,246,0.25)] active:scale-95 cursor-pointer'} ${activeSkillId === yourVariant.skill2.id ? 'ring-2 ring-yellow-400 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]' : ''}`}>
-              {!imgError[`${yourVariant.id}_skill2`] ? (
+            <button 
+              onClick={() => {
+                if (yourVariantId === 'time' && ultSelectingChoice) {
+                  handleSkillClick('time_time_freeze', ultCost);
+                  setUltSelectingChoice(false);
+                } else {
+                  handleSkillClick(yourVariant.skill2.id, skill2Cost);
+                }
+              }} 
+              className={`w-[52px] h-[52px] rounded-lg border flex items-center justify-center font-bold relative transition-all overflow-hidden 
+                ${!(ultSelectingChoice ? isS2ChoiceAvailable : isSkill2Available) 
+                  ? 'bg-[#0b0c14] border-slate-900 text-slate-650 opacity-55 cursor-not-allowed' 
+                  : ultSelectingChoice 
+                    ? 'bg-[#29133d] border-purple-500 text-purple-300 hover:bg-[#381a54] shadow-[0_0_10px_rgba(168,85,247,0.25)] active:scale-95 cursor-pointer border-purple-400' 
+                    : 'bg-[#181a3d] border-blue-500 text-blue-300 hover:bg-[#202352] shadow-[0_0_10px_rgba(59,130,246,0.25)] active:scale-95 cursor-pointer'
+                } 
+                ${(activeSkillId === yourVariant.skill2.id || activeSkillId === 'time_time_freeze') 
+                  ? 'ring-2 ring-yellow-400 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]' 
+                  : ultSelectingChoice 
+                    ? 'ring-1 ring-purple-400' 
+                    : ''
+                }`}
+            >
+              {!imgError[`${yourVariant.id}_skill2`] && !ultSelectingChoice ? (
                 <img src={`/assets/skills/${yourVariant.id}_skill2.png`} alt={yourVariant.skill2.name} className="w-full h-full object-cover" onError={() => handleImgError(`${yourVariant.id}_skill2`)} />
               ) : (
-                <span className="text-[12px] text-blue-400 font-bold font-mono">S2</span>
+                <span className={`text-[12px] font-bold font-mono ${ultSelectingChoice ? 'text-purple-300' : 'text-blue-400'}`}>
+                  {ultSelectingChoice ? 'ULT B' : 'S2'}
+                </span>
               )}
             </button>
           </div>
-          <span className="text-[7px] text-slate-500 font-mono font-bold leading-none mt-0.5">S2</span>
-          <span className="text-[8px] text-slate-400 font-sans truncate max-w-[80px] text-center leading-none mt-0.5" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>{yourVariant.skill2.name}</span>
+          <span className="text-[7px] text-slate-500 font-mono font-bold leading-none mt-0.5">{ultSelectingChoice ? 'ULT B' : 'S2'}</span>
+          <span className="text-[8px] text-slate-400 font-sans truncate max-w-[80px] text-center leading-none mt-0.5" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+            {ultSelectingChoice ? 'Time Freeze' : yourVariant.skill2.name}
+          </span>
         </div>
 
         {/* Ultimate Slot */}
@@ -398,29 +658,57 @@ export default function ActionBar() {
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setSkillDetail({ skill: yourVariant.ultimate, variantId: yourVariant.id, x: e.clientX, y: e.clientY });
+              setSkillDetail({ skill: { ...yourVariant.ultimate, cost: yourVariantId === 'puppet' ? '2-11' : ultCost }, variantId: yourVariant.id, x: e.clientX, y: e.clientY });
             }}
           >
-            <span className="absolute -top-1.5 -left-1.5 px-1 bg-slate-900 border border-purple-700/50 rounded flex items-center justify-center text-[8px] font-bold text-purple-400 font-mono z-20 uppercase">{keybindings.ultimate}</span>
-            <span className={`absolute -bottom-1.5 -right-1.5 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold font-mono z-20 border ${yourAP < Number(yourVariant.ultimate.cost) ? 'bg-red-955 border-red-700 text-red-400' : 'bg-purple-955 border-purple-700 text-purple-400'}`}>
-              {yourVariant.ultimate.cost}
+            <span className={`absolute -top-1.5 -left-1.5 px-1 bg-slate-900 border ${isDragonWrath ? 'border-orange-700/50 text-orange-400' : 'border-purple-700/50 text-purple-400'} rounded flex items-center justify-center text-[8px] font-bold font-mono z-20 uppercase`}>{keybindings.ultimate}</span>
+            <span className={`absolute -bottom-1.5 -right-1.5 w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold font-mono z-20 border ${!canAffordAP(ultCost) ? 'bg-red-955 border-red-700 text-red-400' : isDragonWrath ? 'bg-orange-955 border-orange-700 text-orange-400 shadow-[0_0_4px_rgba(249,115,22,0.5)]' : 'bg-purple-955 border-purple-700 text-purple-400'}`}>
+              {yourVariantId === 'puppet' ? '2-11' : ultCost}
             </span>
             {isUltCooldown && (
-              <div className="absolute inset-0 bg-black/75 z-10 flex items-center justify-center rounded-lg pointer-events-none">
-                <span className="text-sm font-black text-white font-mono">{ultCooldownTurns}</span>
-              </div>
+               <div className="absolute inset-0 bg-black/75 z-10 flex items-center justify-center rounded-lg pointer-events-none">
+                 <span className="text-sm font-black text-white font-mono">{ultCooldownTurns}</span>
+               </div>
             )}
-            <button onClick={() => handleSkillClick(yourVariant.ultimate.id, Number(yourVariant.ultimate.cost))} className={`w-[52px] h-[52px] rounded-lg border-2 flex items-center justify-center font-bold relative transition-all overflow-hidden ${!isUltAvailable ? 'bg-[#0b0c14] border-slate-900 text-slate-650 opacity-55 cursor-not-allowed' : 'bg-[#29133d] border-purple-500 text-purple-300 hover:bg-[#381a54] shadow-[0_0_15px_rgba(168,85,247,0.4)] cursor-pointer'} ${activeSkillId === yourVariant.ultimate.id ? 'ring-2 ring-yellow-400 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]' : ''}`}>
+            <button 
+              onClick={() => {
+                if (yourVariantId === 'time') {
+                  if (activeSkillId === 'time_grand_rewind' || activeSkillId === 'time_time_freeze') {
+                    cancelSkill();
+                  } else {
+                    setUltSelectingChoice(!ultSelectingChoice);
+                  }
+                } else {
+                  handleSkillClick(yourVariant.ultimate.id, ultCost);
+                }
+              }} 
+              className={`w-[52px] h-[52px] rounded-lg border-2 flex items-center justify-center font-bold relative transition-all overflow-hidden 
+                ${!isUltAvailable 
+                  ? 'bg-[#0b0c14] border-slate-900 text-slate-650 opacity-55 cursor-not-allowed' 
+                  : isDragonWrath
+                    ? 'bg-[#3d1313] border-orange-500 text-orange-350 shadow-[0_0_20px_rgba(249,115,22,0.65)] animate-pulse cursor-pointer'
+                    : 'bg-[#29133d] border-purple-500 text-purple-300 hover:bg-[#381a54] shadow-[0_0_15px_rgba(168,85,247,0.4)] cursor-pointer'
+                } 
+                ${(activeSkillId === yourVariant.ultimate.id || activeSkillId === 'time_grand_rewind' || activeSkillId === 'time_time_freeze') 
+                  ? 'ring-2 ring-yellow-400 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)]' 
+                  : ultSelectingChoice 
+                    ? 'ring-2 ring-yellow-400 border-yellow-400 animate-pulse shadow-[0_0_20px_rgba(234,179,8,0.6)] bg-purple-950/80' 
+                    : ''
+                }`}
+            >
               {!imgError[`${yourVariant.id}_ultimate`] ? (
                 <img src={`/assets/skills/${yourVariant.id}_ultimate.png`} alt={yourVariant.ultimate.name} className="w-full h-full object-cover" onError={() => handleImgError(`${yourVariant.id}_ultimate`)} />
               ) : (
-                <span className="text-[12px] text-purple-400 font-bold font-mono">ULT</span>
+                <span className={`text-[12px] font-bold font-mono ${isDragonWrath ? 'text-orange-400' : 'text-purple-400'}`}>
+                  {isDragonWrath ? 'WRATH' : 'ULT'}
+                </span>
               )}
             </button>
           </div>
           <span className="text-[7px] text-slate-500 font-mono font-bold leading-none mt-0.5">ULT</span>
           <span className="text-[8px] text-slate-400 font-sans truncate max-w-[80px] text-center leading-none mt-0.5" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>{yourVariant.ultimate.name}</span>
         </div>
+
       </div>
 
       {hoveredSkill && tooltipPos && (

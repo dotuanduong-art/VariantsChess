@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { VARIANTS_LIST, VariantData } from '../lib/variantsData';
+import { VARIANTS_LIST, VariantData, getVariantImageSrc } from '../lib/variantsData';
 import { motion } from 'framer-motion';
 
 export default function RevealScreen() {
@@ -65,7 +65,7 @@ export default function RevealScreen() {
             <div className="w-full h-full flex items-center justify-center overflow-hidden shrink-0 relative z-10">
               {!imgError[`reveal_left_${leftVariant.id}`] ? (
                 <img
-                  src={`/assets/variants/${leftVariant.id}.png`}
+                  src={getVariantImageSrc(leftVariant.id)}
                   alt={leftVariant.name}
                   className="w-full h-full object-cover"
                   onError={() => handleImgError(`reveal_left_${leftVariant.id}`)}
@@ -110,7 +110,7 @@ export default function RevealScreen() {
             <div className="w-full h-full flex items-center justify-center overflow-hidden shrink-0 relative z-10">
               {!imgError[`reveal_right_${rightVariant.id}`] ? (
                 <img
-                  src={`/assets/variants/${rightVariant.id}.png`}
+                  src={getVariantImageSrc(rightVariant.id)}
                   alt={rightVariant.name}
                   className="w-full h-full object-cover"
                   onError={() => handleImgError(`reveal_right_${rightVariant.id}`)}

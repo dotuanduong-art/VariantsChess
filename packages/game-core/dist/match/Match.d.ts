@@ -15,10 +15,11 @@ export interface MoveResult {
     success: boolean;
     reason?: string;
     capturedPiece?: {
-        type: PieceType;
+        type: PieceType | string;
         color: Color;
     };
     isKingCaptured?: boolean;
+    isStealthMove?: boolean;
 }
 export interface SerializedMatch {
     board: any;
@@ -28,6 +29,8 @@ export interface SerializedMatch {
     moveHistory: {
         from: string;
         to: string;
+        isStealth?: boolean;
+        moverColor?: Color;
     }[];
     whiteTimeLeft: number;
     blackTimeLeft: number;
@@ -52,7 +55,7 @@ export declare class Match {
     /**
      * Attempt to make a move. Returns the result.
      */
-    makeMove(playerColor: Color, from: Position, to: Position): MoveResult;
+    makeMove(playerColor: Color, from: Position, to: Position, moveType?: string): MoveResult;
     /**
      * Submit any action directly (e.g. for skills or pass skill)
      */
@@ -74,6 +77,8 @@ export declare class Match {
     getMoveHistory(): {
         from: string;
         to: string;
+        isStealth?: boolean;
+        moverColor?: Color;
     }[];
     getGameState(): GameState;
     getEventBus(): EventBus;
@@ -88,10 +93,18 @@ export declare class Match {
     toSerializable(): SerializedMatch;
     private getValidPositionsForRequirement;
     serializeForPlayer(player: Color): {
+        moveHistory: {
+            from: string;
+            to: string;
+            isStealth?: boolean;
+            moverColor?: Color;
+        }[];
         availableSkillTargets: Record<string, {
             requirements: any[];
             validPositions: Position[][];
+            currentCost: number;
         }>;
+        opponentSkillCosts: Record<string, number>;
         board: import("../board/Board").SerializedBoard;
         currentTurn: Color;
         turnNumber: number;
@@ -100,6 +113,7 @@ export declare class Match {
         turnPhase: import("../state/GameState").TurnPhase;
         hasMoved: boolean;
         skillsUsedThisTurn: number;
+        skillsUsedThisTurnIds: string[];
         passSkillSubmitted: boolean;
         whiteAP: number;
         blackAP: number;
@@ -116,6 +130,7 @@ export declare class Match {
         pendingDeadKings: Color[];
         whitePlayerEffects: import("..").Effect[];
         blackPlayerEffects: import("..").Effect[];
+        positionSnapshots?: import("../state/GameState").PositionSnapshot[];
     };
 }
 //# sourceMappingURL=Match.d.ts.map

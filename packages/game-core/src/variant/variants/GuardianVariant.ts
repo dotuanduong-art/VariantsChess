@@ -5,6 +5,7 @@ import { Action } from '../../action/Action';
 import { ShieldHandler } from '../../effect/handlers/ShieldHandler';
 import { SanctuaryHandler } from '../../effect/handlers/SanctuaryHandler';
 import { getSquareRegion } from '../../region/Region';
+import { APCostConfig } from '../apCostConfig';
 
 export const GuardianVariant: VariantDefinition = {
   id: 'guardian',
@@ -27,7 +28,7 @@ export const GuardianVariant: VariantDefinition = {
       tier: 'skill1',
       apCost(state, player) {
         const lostCount = state.graveyard.filter(entry => entry.piece.color === player).length;
-        return lostCount >= 8 ? 2 : 4;
+        return lostCount >= 8 ? APCostConfig.guardian.guardian_skill_1_discount : APCostConfig.guardian.guardian_skill_1;
       },
       cooldown: 0,
       usageRule: 'once_per_turn',
@@ -58,8 +59,8 @@ export const GuardianVariant: VariantDefinition = {
           effect: {
             id: `shield_${piece.id}_${Date.now()}`,
             type: 'shield' as any,
-            duration: 4,
-            remainingDuration: 4,
+            duration: 2,
+            remainingDuration: 2,
             tickTiming: 'turnEnd',
             sourcePlayer: player,
             targetType: 'piece',
@@ -79,7 +80,7 @@ export const GuardianVariant: VariantDefinition = {
       name: 'Sanctuary',
       description: 'Create a 3x3 zone; enemies capturing inside are stunned.',
       tier: 'skill2',
-      apCost: 5,
+      apCost: APCostConfig.guardian.guardian_skill_2,
       cooldown: 0,
       usageRule: 'once_per_turn',
 
@@ -106,8 +107,8 @@ export const GuardianVariant: VariantDefinition = {
             effect: {
               id: `sanctuary_${cell.col}_${cell.row}_${Date.now()}`,
               type: 'sanctuary' as any,
-              duration: 8,
-              remainingDuration: 8,
+              duration: 4,
+              remainingDuration: 4,
               tickTiming: 'turnEnd',
               sourcePlayer: player,
               targetType: 'cell',
@@ -129,7 +130,7 @@ export const GuardianVariant: VariantDefinition = {
       name: 'Divine Shield',
       description: 'Give shields to all allies for 5 turns (10 turns duration).',
       tier: 'ultimate',
-      apCost: 8,
+      apCost: APCostConfig.guardian.guardian_ultimate,
       cooldown: 0,
       usageRule: 'once_per_turn',
 
@@ -151,8 +152,8 @@ export const GuardianVariant: VariantDefinition = {
                 effect: {
                   id: `shield_${piece.id}_${Date.now()}_${c}_${r}`,
                   type: 'shield' as any,
-                  duration: 10,
-                  remainingDuration: 10,
+                  duration: 5,
+                  remainingDuration: 5,
                   tickTiming: 'turnEnd',
                   sourcePlayer: player,
                   targetType: 'piece',

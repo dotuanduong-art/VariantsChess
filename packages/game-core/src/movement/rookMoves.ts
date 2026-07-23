@@ -14,6 +14,6 @@ const ORTHOGONAL_DIRECTIONS = [
   { dcol: -1, drow: 0 },
 ];
 
-export function getRookMoves(board: Board, pos: Position, color: Color): Position[] {
-  return getSlidingMoves(board, pos, color, ORTHOGONAL_DIRECTIONS);
+export function getRookMoves(board: Board, pos: Position, color: Color, allowAllyCapture?: boolean): Position[] {
+  return getSlidingMoves(board, pos, color, ORTHOGONAL_DIRECTIONS, allowAllyCapture);
 }

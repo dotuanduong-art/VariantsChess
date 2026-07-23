@@ -3,6 +3,7 @@ import { Color, PieceType } from '../../pieces/Piece';
 import { Action } from '../../action/Action';
 import { BombHandler } from '../../effect/handlers/BombHandler';
 import { LandmineHandler } from '../../effect/handlers/LandmineHandler';
+import { APCostConfig } from '../apCostConfig';
 
 export const DynamiteVariant: VariantDefinition = {
   id: 'dynamite',
@@ -23,7 +24,7 @@ export const DynamiteVariant: VariantDefinition = {
       name: 'Live Charge',
       description: 'Attach a bomb effect to an ally piece (excluding King).',
       tier: 'skill1',
-      apCost: 3,
+      apCost: APCostConfig.dynamite.dynamite_skill_1,
       cooldown: 0,
       usageRule: 'once_per_turn',
 
@@ -80,7 +81,7 @@ export const DynamiteVariant: VariantDefinition = {
       name: 'Landmine',
       description: 'Place a Landmine on an empty square.',
       tier: 'skill2',
-      apCost: 3,
+      apCost: APCostConfig.dynamite.dynamite_skill_2,
       cooldown: 0,
       usageRule: 'once_per_turn',
 
@@ -134,7 +135,7 @@ export const DynamiteVariant: VariantDefinition = {
       name: 'Detonation',
       description: 'Detonate all bombs, triggering explosions.',
       tier: 'ultimate',
-      apCost: 9,
+      apCost: APCostConfig.dynamite.dynamite_ultimate,
       cooldown: 0,
       usageRule: 'once_per_turn',
 

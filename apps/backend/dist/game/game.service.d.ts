@@ -59,7 +59,7 @@ export declare class GameService {
         actions?: any[];
     };
     private canPlayerUseAnySkill;
-    makeMove(roomCode: string, playerId: string, from: string, to: string): {
+    makeMove(roomCode: string, playerId: string, from: string, to: string, moveType?: string): {
         success: boolean;
         matchState?: SerializedMatch;
         error?: string;
@@ -69,6 +69,7 @@ export declare class GameService {
         };
         isKingCaptured?: boolean;
         winner?: Color;
+        isStealthMove?: boolean;
     };
     passSkill(roomCode: string, playerId: string): {
         success: boolean;

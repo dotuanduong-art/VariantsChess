@@ -5,6 +5,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Color = exports.PieceType = void 0;
 exports.oppositeColor = oppositeColor;
+exports.getPieceOwner = getPieceOwner;
 var PieceType;
 (function (PieceType) {
     PieceType["King"] = "King";
@@ -24,5 +25,19 @@ var Color;
  */
 function oppositeColor(color) {
     return color === Color.White ? Color.Black : Color.White;
+}
+/**
+ * Get the owner/controller of a piece, taking Walker shared control metadata into account.
+ */
+function getPieceOwner(piece) {
+    const walkerEffect = piece.effects?.find(e => e.type === 'walker');
+    if (walkerEffect && walkerEffect.metadata && walkerEffect.metadata.controlledBy) {
+        return walkerEffect.metadata.controlledBy;
+    }
+    const puppetEffect = piece.effects?.find(e => e.type === 'puppet_control');
+    if (puppetEffect && puppetEffect.metadata && puppetEffect.metadata.controlledBy) {
+        return puppetEffect.metadata.controlledBy;
+    }
+    return piece.color;
 }
 //# sourceMappingURL=Piece.js.map

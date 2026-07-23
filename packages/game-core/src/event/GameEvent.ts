@@ -21,7 +21,8 @@ export type GameEventType =
   | 'OnPawnPromotion'
   | 'OnGameOver'
   | 'OnBeforePieceDestroyed'
-  | 'OnPieceDestroyed';
+  | 'OnPieceDestroyed'
+  | 'OnPiecePushed';
 
 export interface GameEvent {
   type: GameEventType;
@@ -77,9 +78,21 @@ export function createOnCaptureEvent(
   attackerId: string,
   capturedPieceId: string,
   from: any,
-  to: any
+  to: any,
+  capturedPieceSnapshot?: Piece
 ): GameEvent {
-  return { type: 'OnCapture', turnNumber, activePlayer, payload: { attackerId, capturedPieceId, from, to } };
+  return {
+    type: 'OnCapture',
+    turnNumber,
+    activePlayer,
+    payload: {
+      attackerId,
+      capturedPieceId,
+      from,
+      to,
+      capturedPieceSnapshot,
+    },
+  };
 }
 
 export function createOnPieceDeathEvent(
@@ -136,10 +149,12 @@ export function createOnSkillUsedEvent(
   turnNumber: number,
   activePlayer: Color,
   skillId: string,
-  targets: any[]
+  targets: any[],
+  actualCost?: number
 ): GameEvent {
-  return { type: 'OnSkillUsed', turnNumber, activePlayer, payload: { skillId, targets } };
+  return { type: 'OnSkillUsed', turnNumber, activePlayer, payload: { skillId, targets, actualCost } };
 }
+
 
 export function createOnEffectAppliedEvent(
   turnNumber: number,

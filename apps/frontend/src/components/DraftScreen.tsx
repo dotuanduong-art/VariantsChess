@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { VARIANTS_LIST, VariantData } from '../lib/variantsData';
+import { VARIANTS_LIST, VariantData, getVariantImageSrc } from '../lib/variantsData';
 import { motion } from 'framer-motion';
 
 export default function DraftScreen() {
@@ -73,6 +73,17 @@ export default function DraftScreen() {
 
   return (
     <div className="fixed inset-0 w-full h-full bg-[#0b0c16] text-[#cbd5e1] flex flex-col font-mono overflow-hidden">
+      {/* Custom style to hide scrollbars */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
       {/* Background glowing effects */}
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#2a2b5e]/20 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#5f3333]/15 blur-[120px] pointer-events-none" />
@@ -108,7 +119,7 @@ export default function DraftScreen() {
           </div>
 
           {/* Role Filters */}
-          <div className="flex flex-col gap-1.5 mb-4 max-h-[160px] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-1.5 mb-4 max-h-[160px] overflow-y-auto no-scrollbar pr-1">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">Filter by Role</span>
             <div className="flex flex-wrap gap-1">
               {roles.map((role) => (
@@ -128,7 +139,7 @@ export default function DraftScreen() {
           </div>
 
           {/* Variant Grid */}
-          <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
+          <div className="flex-1 overflow-y-auto no-scrollbar pr-1 flex flex-col gap-2">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-1">Variants</span>
             {filteredVariants.length === 0 ? (
               <div className="text-center text-xs text-slate-600 italic py-8">No variants found</div>
@@ -150,7 +161,7 @@ export default function DraftScreen() {
                       <div className="w-8 h-8 rounded border border-slate-700 bg-slate-800/40 flex items-center justify-center overflow-hidden shrink-0 relative bg-[#111322]">
                         {!imgError[`catalog_${v.id}`] ? (
                           <img
-                            src={`/assets/variants/${v.id}.png`}
+                            src={getVariantImageSrc(v.id)}
                             alt={v.name}
                             className="w-full h-full object-cover"
                             onError={() => handleImgError(`catalog_${v.id}`)}
@@ -190,7 +201,7 @@ export default function DraftScreen() {
               {/* Variant Image Background */}
               {!imgError[`showcase_${selectedVariant.id}`] ? (
                 <img
-                  src={`/assets/variants/${selectedVariant.id}.png`}
+                  src={getVariantImageSrc(selectedVariant.id)}
                   alt={selectedVariant.name}
                   className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                   onError={() => handleImgError(`showcase_${selectedVariant.id}`)}

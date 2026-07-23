@@ -19,7 +19,7 @@ class VariantRegistry {
     /**
      * Load a variant for a player. Registers its handlers, modifiers, and hooks.
      */
-    loadForPlayer(variantId, player, effectRegistry, eventBus, moveModifierChain, state) {
+    loadForPlayer(variantId, player, effectRegistry, eventBus, moveModifierChain, state, pipeline) {
         const variant = this.get(variantId);
         if (!variant) {
             throw new Error(`Variant ${variantId} is not registered`);
@@ -85,6 +85,12 @@ class VariantRegistry {
                 ...state.variantState,
                 ...variant.getInitialState(),
             };
+        }
+        // 6. Register action validators (e.g. ThunderFangCaptureValidator)
+        if (pipeline && variant.actionValidators) {
+            for (const validator of variant.actionValidators) {
+                pipeline.addValidator(validator);
+            }
         }
         this.loadedVariants.set(loadKey, { player, variantId });
     }

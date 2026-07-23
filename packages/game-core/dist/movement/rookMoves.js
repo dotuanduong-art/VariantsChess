@@ -11,7 +11,7 @@ const ORTHOGONAL_DIRECTIONS = [
     { dcol: 1, drow: 0 },
     { dcol: -1, drow: 0 },
 ];
-function getRookMoves(board, pos, color) {
-    return (0, slidingMoves_1.getSlidingMoves)(board, pos, color, ORTHOGONAL_DIRECTIONS);
+function getRookMoves(board, pos, color, allowAllyCapture) {
+    return (0, slidingMoves_1.getSlidingMoves)(board, pos, color, ORTHOGONAL_DIRECTIONS, allowAllyCapture);
 }
 //# sourceMappingURL=rookMoves.js.map

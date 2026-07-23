@@ -14,9 +14,11 @@
 
 import { Board, BOARD_SIZE } from '../board/Board';
 import { Position, isInBounds, posEquals } from '../board/Position';
-import { Piece, PieceType, Color } from '../pieces/Piece';
+import { Piece, PieceType, Color, getPieceOwner } from '../pieces/Piece';
 import { getSlidingMoves } from '../movement/slidingMoves';
 import { GameState } from '../state/GameState';
+import { specialPieceRegistry } from '../pieces/SpecialPieceRegistry';
+import { isSlidingBlocked } from '../modifier/CellEffectBlockModifier';
 
 // ─── Per-piece attack squares ─────────────────────────────────
 
@@ -88,17 +90,23 @@ function getPieceAttackSquares(board: Board, pos: Position, piece: Piece, state?
   }
 
   let attacks: Position[] = [];
-  switch (piece.type) {
-    case PieceType.Pawn: {
-      const direction = piece.color === Color.White ? 1 : -1;
-      for (const dcol of [-1, 1]) {
-        const target: Position = { col: pos.col + dcol, row: pos.row + direction };
-        if (isInBounds(target)) {
-          attacks.push(target);
-        }
-      }
-      break;
+  if (piece.specialType) {
+    const def = specialPieceRegistry.get(piece.specialType);
+    if (def && def.getLegalMoves) {
+      attacks = def.getLegalMoves(board, pos, piece);
     }
+  } else {
+    switch (piece.type) {
+      case PieceType.Pawn: {
+        const direction = piece.color === Color.White ? 1 : -1;
+        for (const dcol of [-1, 1]) {
+          const target: Position = { col: pos.col + dcol, row: pos.row + direction };
+          if (isInBounds(target)) {
+            attacks.push(target);
+          }
+        }
+        break;
+      }
 
     case PieceType.Knight: {
       for (const { dcol, drow } of KNIGHT_OFFSETS) {
@@ -142,7 +150,7 @@ function getPieceAttackSquares(board: Board, pos: Position, piece: Piece, state?
 
     default:
       attacks = [];
-      break;
+    }
   }
 
   if (state) {
@@ -169,7 +177,7 @@ function getPieceAttackSquares(board: Board, pos: Position, piece: Piece, state?
 function getSlidingAttackSquares(
   board: Board,
   pos: Position,
-  _color: Color,
+  color: Color,
   directions: { dcol: number; drow: number }[]
 ): Position[] {
   const attacks: Position[] = [];
@@ -178,12 +186,13 @@ function getSlidingAttackSquares(
     let current: Position = { col: pos.col + dcol, row: pos.row + drow };
 
     while (isInBounds(current)) {
-      if (board.getCellEffects(current).some(e => e.type === 'mountain')) {
-        break;
+      if (isSlidingBlocked(board, current, color)) {
+        break; // Blocked by cell effect or special piece obstacle
       }
+      const piece = board.getPiece(current);
       attacks.push({ ...current });
       // Stop sliding after hitting any piece (but the square is still attacked)
-      if (board.getPiece(current)) {
+      if (piece) {
         break;
       }
       current = { col: current.col + dcol, row: current.row + drow };
@@ -207,7 +216,7 @@ export function getAttackedSquares(board: Board, byColor: Color, state?: Readonl
     for (let col = 0; col < BOARD_SIZE; col++) {
       const pos: Position = { col, row };
       const piece = board.getPiece(pos);
-      if (piece && piece.color === byColor) {
+      if (piece && getPieceOwner(piece) === byColor) {
         const attacks = getPieceAttackSquares(board, pos, piece, state);
         for (const atk of attacks) {
           attackedSet.add(`${atk.col},${atk.row}`);
@@ -243,12 +252,18 @@ export function getAttackedPieces(
     for (let col = 0; col < BOARD_SIZE; col++) {
       const attackerPos: Position = { col, row };
       const attacker = board.getPiece(attackerPos);
-      if (!attacker || attacker.color !== attackerColor) continue;
+      if (!attacker || getPieceOwner(attacker) !== attackerColor) continue;
 
       const attacks = getPieceAttackSquares(board, attackerPos, attacker, state);
       for (const targetPos of attacks) {
         const target = board.getPiece(targetPos);
-        if (target && target.color !== attackerColor) {
+        if (target && getPieceOwner(target) !== attackerColor) {
+          if (target.specialType) {
+            const def = specialPieceRegistry.get(target.specialType);
+            if (def && def.canBeAttacked === false) {
+              continue;
+            }
+          }
           results.push({ attacker, target, attackerPos, targetPos });
         }
       }
@@ -266,7 +281,7 @@ export function isKingAttacked(board: Board, kingColor: Color, state?: Readonly<
   for (let row = 0; row < BOARD_SIZE; row++) {
     for (let col = 0; col < BOARD_SIZE; col++) {
       const piece = board.getPiece({ col, row });
-      if (piece && piece.type === PieceType.King && piece.color === kingColor) {
+      if (piece && piece.type === PieceType.King && getPieceOwner(piece) === kingColor) {
         const opponentColor = kingColor === Color.White ? Color.Black : Color.White;
         return isSquareAttackedBy(board, { col, row }, opponentColor, state);
       }

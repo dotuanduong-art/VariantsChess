@@ -6,15 +6,17 @@
 export { Board, BOARD_SIZE } from './board/Board';
 export type { SerializedBoard } from './board/Board';
 export { toAlgebraic, fromAlgebraic, isInBounds, posEquals } from './board/Position';
-export type { Position } from './board/Position';
+export type { Position, LegalMove } from './board/Position';
 
 // Pieces
-export { PieceType, Color, oppositeColor } from './pieces/Piece';
+export { PieceType, Color, oppositeColor, getPieceOwner } from './pieces/Piece';
 export type { Piece } from './pieces/Piece';
 export { createInitialBoard } from './pieces/initialLayout';
+export { SpecialPieceRegistry, specialPieceRegistry, countSpecialPieces } from './pieces/SpecialPieceRegistry';
+export type { SpecialPieceDefinition } from './pieces/SpecialPieceRegistry';
 
 // Movement
-export { getLegalMoves, getBaseLegalMoves } from './movement/MoveGenerator';
+export { getLegalMoves, getBaseLegalMoves, getBaseMovesForType } from './movement/MoveGenerator';
 
 // Validation
 export { validateMove } from './validation/MoveValidator';
@@ -29,7 +31,6 @@ export type { EffectType, Effect } from './effect/Effect';
 export type { EffectHandler } from './effect/EffectHandler';
 export { EffectRegistry } from './effect/EffectRegistry';
 export { StunHandler } from './effect/handlers/StunHandler';
-export { MountainHandler } from './effect/handlers/MountainHandler';
 export { ShieldHandler } from './effect/handlers/ShieldHandler';
 export { SanctuaryHandler } from './effect/handlers/SanctuaryHandler';
 export { BombHandler } from './effect/handlers/BombHandler';
@@ -39,6 +40,16 @@ export { SilenceHandler } from './effect/handlers/SilenceHandler';
 export { BlessingHandler } from './effect/handlers/BlessingHandler';
 export { JudgmentHandler } from './effect/handlers/JudgmentHandler';
 export { FateHandler } from './effect/handlers/FateHandler';
+export { DevilEyeHandler } from './effect/handlers/DevilEyeHandler';
+export { DevilTollHandler } from './effect/handlers/DevilTollHandler';
+export { PredictionHandler } from './effect/handlers/PredictionHandler';
+export { TimeFreezeHandler } from './effect/handlers/TimeFreezeHandler';
+export { DragonGazeHandler } from './effect/handlers/DragonGazeHandler';
+export { SubterraneanEscapeHandler } from './effect/handlers/SubterraneanEscapeHandler';
+export { DragonsRoarBeamHandler } from './effect/handlers/DragonsRoarBeamHandler';
+export { AegisHandler } from './effect/handlers/AegisHandler';
+
+
 
 // Event
 export type { GameEventType, GameEvent } from './event/GameEvent';
@@ -86,7 +97,7 @@ export { SnapshotManager } from './state/Snapshot';
 export type { GameStateSnapshot } from './state/Snapshot';
 
 // Action Pipeline
-export { ActionPipeline, BasicMoveValidator, TurnPhaseValidator, APValidator, SkillValidator } from './action/ActionPipeline';
+export { ActionPipeline, BasicMoveValidator, TurnPhaseValidator, APValidator, SkillValidator, DevilTollValidator, getDevilTollAPCost } from './action/ActionPipeline';
 export type { ActionResult, ActionValidator } from './action/ActionPipeline';
 
 // Combat — Attack Detection [Step 4]
@@ -122,4 +133,33 @@ export { GuardianVariant } from './variant/variants/GuardianVariant';
 export { NephalemVariant } from './variant/variants/NephalemVariant';
 export { AngelVariant } from './variant/variants/AngelVariant';
 export { RequiemVariant } from './variant/variants/RequiemVariant';
+export { WizardVariant } from './variant/variants/WizardVariant';
+export { CherubimVariant } from './variant/variants/CherubimVariant';
+export { EarthVariant } from './variant/variants/EarthVariant';
+export { CannibalVariant } from './variant/variants/CannibalVariant';
+export { EnemySwapHandler } from './effect/handlers/EnemySwapHandler';
+export { BindHandler } from './effect/handlers/BindHandler';
+export { DeathCounterHandler } from './effect/handlers/DeathCounterHandler';
+export { GhostHandler } from './effect/handlers/GhostHandler';
+export { PossessionHandler } from './effect/handlers/PossessionHandler';
+export { StealthMaintenanceHandler } from './effect/handlers/StealthMaintenanceHandler';
+export { PhantomVariant } from './variant/variants/PhantomVariant';
+export { TimeVariant } from './variant/variants/TimeVariant';
+export { VerdantDragonVariant } from './variant/variants/VerdantDragonVariant';
+export { LordVariant } from './variant/variants/LordVariant';
+export { DragonSentinelVariant } from './variant/variants/DragonSentinelVariant';
+export { TurtleVariant } from './variant/variants/TurtleVariant';
+export { PhoenixVariant } from './variant/variants/PhoenixVariant';
+export { CellEffectBlockModifier, isSlidingBlocked } from './modifier/CellEffectBlockModifier';
+export { SummonDurationHandler } from './effect/handlers/SummonDurationHandler';
+export { PuppetVariant } from './variant/variants/PuppetVariant';
+export { PuppetNoCaptureHandler } from './effect/handlers/PuppetNoCaptureHandler';
+export { PuppetControlHandler } from './effect/handlers/PuppetControlHandler';
+export { PuppetTrapHandler } from './effect/handlers/PuppetTrapHandler';
+
+// AP Cost Config
+export { APCostConfig } from './variant/apCostConfig';
+export type { APCostConfigType, VariantIdWithAPConfig } from './variant/apCostConfig';
+
+
 

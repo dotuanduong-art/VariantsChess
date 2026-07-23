@@ -31,7 +31,64 @@ export type Action =
   // === Piece lifecycle ===
   | SpawnPieceAction       // for resurrection skills
   | DestroyPieceAction     // for skill-based kills (not capture)
+  | SwapPositionsAction
+  | FoolMoveAction
+  | SacrificePieceAction
+  | PushPieceAction
+  | TransformPieceAction
+  | ZombieBiteAction
+  | PhoenixRebirthAction
+  | RemovePortalsAction
   ;
+
+export interface RemovePortalsAction {
+  type: 'REMOVE_PORTALS';
+  pairId: string;
+}
+
+export interface PhoenixRebirthAction {
+  type: 'PHOENIX_REBIRTH';
+  player: Color;
+}
+
+export interface ZombieBiteAction {
+  type: 'ZOMBIE_BITE';
+  attackerId: string;
+  attackerPosition: Position;
+  targetPosition: Position;
+}
+
+export interface TransformPieceAction {
+  type: 'TRANSFORM_PIECE';
+  pieceId: string;
+  position: Position;
+  newType: string;
+  newColor?: Color;
+}
+
+export interface PushPieceAction {
+  type: 'PUSH_PIECE';
+  pieceId: string;
+  from: Position;
+  to: Position;
+  reason: string;
+}
+
+export interface SwapPositionsAction {
+  type: 'SWAP_POSITIONS';
+  pieceAId: string;
+  positionA: Position;
+  pieceBId: string;
+  positionB: Position;
+  reason: string;
+}
+
+export interface FoolMoveAction {
+  type: 'FOOL_MOVE';
+  pieceId: string;
+  from: Position;
+  to: Position;
+}
 
 export interface MovePieceAction {
   type: 'MOVE_PIECE';
@@ -52,6 +109,8 @@ export interface CaptureAction {
   to: Position;
   capturedPieceId: string;
   capturedPieceSnapshot: Piece;   // full snapshot for undo/graveyard
+  /** If true, attacker stays at `from` instead of moving to `to` (Thunder Fang range-capture) */
+  stayInPlace?: boolean;
 }
 
 export interface PawnPromotionAction {
@@ -153,4 +212,11 @@ export interface DestroyPieceAction {
   pieceId: string;
   position: Position;
   reason: string;
+}
+
+export interface SacrificePieceAction {
+  type: 'SACRIFICE_PIECE';
+  pieceId: string;
+  position: Position;
+  player: Color;
 }

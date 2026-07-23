@@ -15,6 +15,10 @@ export interface SkillTargetRequirement {
     description: string;
     region?: Position[];
     excludeKing?: boolean;
+    pieceType?: string;
+    dynamicCostByPieceType?: {
+        [pieceType: string]: number;
+    };
 }
 export interface SkillDefinition {
     id: string;
@@ -36,7 +40,7 @@ export interface SkillDefinition {
     /**
      * Define what targets this skill requires.
      */
-    getTargetRequirements(): SkillTargetRequirement[];
+    getTargetRequirements(state?: Readonly<GameState>, player?: Color): SkillTargetRequirement[];
     /**
      * Execute the skill — returns Actions to be submitted to the pipeline.
      * Note: This does NOT mutate state — it returns the action list to apply.

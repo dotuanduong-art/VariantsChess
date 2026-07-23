@@ -14,6 +14,7 @@ class GameState {
     turnPhase;
     hasMoved;
     skillsUsedThisTurn;
+    skillsUsedThisTurnIds;
     passSkillSubmitted;
     // AP economy
     whiteAP;
@@ -36,6 +37,7 @@ class GameState {
     pendingDeadKings = [];
     whitePlayerEffects;
     blackPlayerEffects;
+    positionSnapshots = [];
     constructor(rngSeed = Date.now()) {
         this.board = new Board_1.Board();
         this.currentTurn = Piece_1.Color.White;
@@ -45,6 +47,7 @@ class GameState {
         this.turnPhase = 'start';
         this.hasMoved = false;
         this.skillsUsedThisTurn = 0;
+        this.skillsUsedThisTurnIds = [];
         this.passSkillSubmitted = false;
         this.whiteAP = 0;
         this.blackAP = 0;
@@ -96,6 +99,7 @@ class GameState {
             turnPhase: this.turnPhase,
             hasMoved: this.hasMoved,
             skillsUsedThisTurn: this.skillsUsedThisTurn,
+            skillsUsedThisTurnIds: [...(this.skillsUsedThisTurnIds || [])],
             passSkillSubmitted: this.passSkillSubmitted,
             whiteAP: this.whiteAP,
             blackAP: this.blackAP,
@@ -111,10 +115,15 @@ class GameState {
             rngCounter: this.rngCounter,
             whiteVariantId: this.whiteVariantId,
             blackVariantId: this.blackVariantId,
-            variantState: { ...this.variantState },
+            variantState: this.variantState ? structuredClone(this.variantState) : {},
             pendingDeadKings: [...this.pendingDeadKings],
             whitePlayerEffects: this.whitePlayerEffects.map(e => ({ ...e })),
             blackPlayerEffects: this.blackPlayerEffects.map(e => ({ ...e })),
+            positionSnapshots: this.positionSnapshots ? this.positionSnapshots.map(s => ({
+                turnNumber: s.turnNumber,
+                player: s.player,
+                positions: s.positions.map(p => ({ pieceId: p.pieceId, position: { col: p.position.col, row: p.position.row } }))
+            })) : [],
         };
     }
     serializeForPlayer(player) {
@@ -142,12 +151,20 @@ class GameState {
             if (!piece)
                 return null;
             if (piece.color !== player) {
-                const isInvisible = piece.effects?.some((e) => e.type === 'ghost' ||
+                const isInvisible = piece.effects?.some((e) => (e.type === 'ghost' && e.metadata?.stealth === true) ||
                     e.type === 'invisible' ||
                     e.type === 'stealth' ||
                     e.isHidden === true);
                 if (isInvisible)
                     return null;
+                // Apex Camouflage check
+                const hasApexCamouflage = this.getPlayerEffects(piece.color).some(e => e.type === 'apex_camouflage');
+                if (hasApexCamouflage && piece.type !== Piece_1.PieceType.King) {
+                    const revealedPieceIds = this.variantState.revealedPieceIds || [];
+                    if (!revealedPieceIds.includes(piece.id)) {
+                        return null;
+                    }
+                }
             }
             return piece;
         }));
@@ -163,6 +180,7 @@ class GameState {
         state.turnPhase = data.turnPhase;
         state.hasMoved = data.hasMoved;
         state.skillsUsedThisTurn = data.skillsUsedThisTurn;
+        state.skillsUsedThisTurnIds = data.skillsUsedThisTurnIds ? [...data.skillsUsedThisTurnIds] : [];
         state.passSkillSubmitted = data.passSkillSubmitted;
         state.whiteAP = data.whiteAP;
         state.blackAP = data.blackAP;
@@ -181,6 +199,11 @@ class GameState {
         state.pendingDeadKings = data.pendingDeadKings ? [...data.pendingDeadKings] : [];
         state.whitePlayerEffects = data.whitePlayerEffects ? data.whitePlayerEffects.map(e => ({ ...e })) : [];
         state.blackPlayerEffects = data.blackPlayerEffects ? data.blackPlayerEffects.map(e => ({ ...e })) : [];
+        state.positionSnapshots = data.positionSnapshots ? data.positionSnapshots.map(s => ({
+            turnNumber: s.turnNumber,
+            player: s.player,
+            positions: s.positions.map(p => ({ pieceId: p.pieceId, position: { col: p.position.col, row: p.position.row } }))
+        })) : [];
         return state;
     }
 }

@@ -5,6 +5,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateMove = validateMove;
 const Position_1 = require("../board/Position");
+const Piece_1 = require("../pieces/Piece");
 const MoveGenerator_1 = require("../movement/MoveGenerator");
 /**
  * Validate a move request from a player.
@@ -35,7 +36,7 @@ function validateMove(board, currentTurn, playerColor, from, to, state, modifier
         return { valid: false, reason: 'No piece at source position' };
     }
     // Check piece ownership
-    if (piece.color !== playerColor) {
+    if ((0, Piece_1.getPieceOwner)(piece) !== playerColor) {
         return { valid: false, reason: 'That piece does not belong to you' };
     }
     // Check legal move

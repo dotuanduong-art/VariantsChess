@@ -6,6 +6,7 @@ import { GameEventType, GameEvent } from '../../event/GameEvent';
 import { GameState } from '../../state/GameState';
 import { Action } from '../../action/Action';
 import { DeterministicRng } from '../../rng/DeterministicRng';
+import { APCostConfig } from '../apCostConfig';
 
 class ThunderTrapHandler implements EffectHandler {
   effectType = 'thunder_trap' as EffectType;
@@ -35,8 +36,8 @@ class ThunderTrapHandler implements EffectHandler {
         effect: {
           id: `stun_trap_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
           type: 'stun',
-          duration: 1,
-          remainingDuration: 1,
+          duration: 2,
+          remainingDuration: 2,
           tickTiming: 'turnEnd',
           sourcePlayer: trap.sourcePlayer,
           targetType: 'piece',
@@ -77,7 +78,7 @@ export const LightningVariant: VariantDefinition = {
       name: 'Thunder Trap',
       description: 'Place a hidden trap on an empty square. If an enemy lands on it, they are stunned.',
       tier: 'skill1',
-      apCost: 3,
+      apCost: APCostConfig.lightning.lightning_skill_1,
       cooldown: 0,
       usageRule: 'once_per_turn',
       
@@ -133,7 +134,7 @@ export const LightningVariant: VariantDefinition = {
       name: 'Electric Terrain',
       description: 'For 5 rounds, move time is reduced to 3 seconds. Failing to move skips turn and stuns a random piece. No skills can be used during this time.',
       tier: 'skill2',
-      apCost: 8,
+      apCost: APCostConfig.lightning.lightning_skill_2,
       cooldown: 0,
       usageRule: 'once_per_turn',
       
@@ -156,8 +157,8 @@ export const LightningVariant: VariantDefinition = {
           effect: {
             id: `terrain_${Date.now()}`,
             type: 'electric_terrain',
-            duration: 10, // 5 rounds = 10 turns (2 turns per round)
-            remainingDuration: 10,
+            duration: 5,
+            remainingDuration: 5,
             tickTiming: 'turnEnd',
             sourcePlayer: player,
             targetType: 'cell',
@@ -176,7 +177,7 @@ export const LightningVariant: VariantDefinition = {
       name: 'Raigeki',
       description: 'Destroy all stunned enemy pieces. For King, remove Stun instead of destroying.',
       tier: 'ultimate',
-      apCost: 12,
+      apCost: APCostConfig.lightning.lightning_ultimate,
       cooldown: 0,
       usageRule: 'once_per_turn',
       

@@ -5,9 +5,29 @@ const ResolutionOrder_1 = require("../../event/ResolutionOrder");
 const Board_1 = require("../../board/Board");
 class ShieldHandler {
     effectType = 'shield';
-    subscribesTo = ['OnBeforePieceDestroyed'];
+    subscribesTo = ['OnBeforePieceDestroyed', 'OnTurnEnd'];
     priority = ResolutionOrder_1.PRIORITY.BEFORE_DESTROY_SHIELD;
     handle(event, state, enqueueAction) {
+        if (event.type === 'OnTurnEnd') {
+            for (let r = 0; r < Board_1.BOARD_SIZE; r++) {
+                for (let c = 0; c < Board_1.BOARD_SIZE; c++) {
+                    const p = state.board.getPiece({ col: c, row: r });
+                    if (p && p.effects) {
+                        const expiredShields = p.effects.filter(e => e.type === 'shield' && (e.remainingDuration ?? 0) <= 0);
+                        for (const shield of expiredShields) {
+                            enqueueAction({
+                                type: 'REMOVE_EFFECT',
+                                effectId: shield.id,
+                                targetId: shield.targetId,
+                                targetType: 'piece',
+                                reason: 'expired',
+                            });
+                        }
+                    }
+                }
+            }
+            return;
+        }
         if (event.type !== 'OnBeforePieceDestroyed')
             return;
         const { pieceSnapshot, reason } = event.payload;
@@ -45,15 +65,6 @@ class ShieldHandler {
                 }
                 boardShield.metadata.lastBlockedTurnKey = turnKey;
                 boardShield.remainingDuration = (boardShield.remainingDuration ?? 4) - 1;
-                if (boardShield.remainingDuration <= 0) {
-                    enqueueAction({
-                        type: 'REMOVE_EFFECT',
-                        effectId: boardShield.id,
-                        targetId: boardShield.targetId,
-                        targetType: 'piece',
-                        reason: 'expired',
-                    });
-                }
             }
         }
     }

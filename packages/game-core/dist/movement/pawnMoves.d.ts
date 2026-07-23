@@ -12,5 +12,5 @@ import { Color } from '../pieces/Piece';
  *
  * "Forward" is +row for White, -row for Black.
  */
-export declare function getPawnMoves(board: Board, pos: Position, color: Color): Position[];
+export declare function getPawnMoves(board: Board, pos: Position, color: Color, allowAllyCapture?: boolean, ownerColor?: Color): Position[];
 //# sourceMappingURL=pawnMoves.d.ts.map

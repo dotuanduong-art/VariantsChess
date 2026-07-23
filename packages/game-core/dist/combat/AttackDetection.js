@@ -20,6 +20,8 @@ exports.isKingAttacked = isKingAttacked;
 const Board_1 = require("../board/Board");
 const Position_1 = require("../board/Position");
 const Piece_1 = require("../pieces/Piece");
+const SpecialPieceRegistry_1 = require("../pieces/SpecialPieceRegistry");
+const CellEffectBlockModifier_1 = require("../modifier/CellEffectBlockModifier");
 // ─── Per-piece attack squares ─────────────────────────────────
 const KNIGHT_OFFSETS = [
     { dcol: 1, drow: 2 },
@@ -83,55 +85,62 @@ function getPieceAttackSquares(board, pos, piece, state) {
         }
     }
     let attacks = [];
-    switch (piece.type) {
-        case Piece_1.PieceType.Pawn: {
-            const direction = piece.color === Piece_1.Color.White ? 1 : -1;
-            for (const dcol of [-1, 1]) {
-                const target = { col: pos.col + dcol, row: pos.row + direction };
-                if ((0, Position_1.isInBounds)(target)) {
-                    attacks.push(target);
-                }
-            }
-            break;
+    if (piece.specialType) {
+        const def = SpecialPieceRegistry_1.specialPieceRegistry.get(piece.specialType);
+        if (def && def.getLegalMoves) {
+            attacks = def.getLegalMoves(board, pos, piece);
         }
-        case Piece_1.PieceType.Knight: {
-            for (const { dcol, drow } of KNIGHT_OFFSETS) {
-                const target = { col: pos.col + dcol, row: pos.row + drow };
-                if ((0, Position_1.isInBounds)(target)) {
-                    attacks.push(target);
+    }
+    else {
+        switch (piece.type) {
+            case Piece_1.PieceType.Pawn: {
+                const direction = piece.color === Piece_1.Color.White ? 1 : -1;
+                for (const dcol of [-1, 1]) {
+                    const target = { col: pos.col + dcol, row: pos.row + direction };
+                    if ((0, Position_1.isInBounds)(target)) {
+                        attacks.push(target);
+                    }
                 }
+                break;
             }
-            break;
-        }
-        case Piece_1.PieceType.King: {
-            for (const { dcol, drow } of KING_OFFSETS) {
-                const target = { col: pos.col + dcol, row: pos.row + drow };
-                if ((0, Position_1.isInBounds)(target)) {
-                    attacks.push(target);
+            case Piece_1.PieceType.Knight: {
+                for (const { dcol, drow } of KNIGHT_OFFSETS) {
+                    const target = { col: pos.col + dcol, row: pos.row + drow };
+                    if ((0, Position_1.isInBounds)(target)) {
+                        attacks.push(target);
+                    }
                 }
+                break;
             }
-            break;
-        }
-        case Piece_1.PieceType.Rook:
-            attacks = getSlidingAttackSquares(board, pos, piece.color, ORTHOGONAL);
-            break;
-        case Piece_1.PieceType.Bishop: {
-            // Diagonal sliding + 1-square horizontal (same rule as bishopMoves.ts)
-            attacks = getSlidingAttackSquares(board, pos, piece.color, DIAGONAL);
-            for (const dcol of [-1, 1]) {
-                const target = { col: pos.col + dcol, row: pos.row };
-                if ((0, Position_1.isInBounds)(target)) {
-                    attacks.push(target);
+            case Piece_1.PieceType.King: {
+                for (const { dcol, drow } of KING_OFFSETS) {
+                    const target = { col: pos.col + dcol, row: pos.row + drow };
+                    if ((0, Position_1.isInBounds)(target)) {
+                        attacks.push(target);
+                    }
                 }
+                break;
             }
-            break;
+            case Piece_1.PieceType.Rook:
+                attacks = getSlidingAttackSquares(board, pos, piece.color, ORTHOGONAL);
+                break;
+            case Piece_1.PieceType.Bishop: {
+                // Diagonal sliding + 1-square horizontal (same rule as bishopMoves.ts)
+                attacks = getSlidingAttackSquares(board, pos, piece.color, DIAGONAL);
+                for (const dcol of [-1, 1]) {
+                    const target = { col: pos.col + dcol, row: pos.row };
+                    if ((0, Position_1.isInBounds)(target)) {
+                        attacks.push(target);
+                    }
+                }
+                break;
+            }
+            case Piece_1.PieceType.Queen:
+                attacks = getSlidingAttackSquares(board, pos, piece.color, [...ORTHOGONAL, ...DIAGONAL]);
+                break;
+            default:
+                attacks = [];
         }
-        case Piece_1.PieceType.Queen:
-            attacks = getSlidingAttackSquares(board, pos, piece.color, [...ORTHOGONAL, ...DIAGONAL]);
-            break;
-        default:
-            attacks = [];
-            break;
     }
     if (state) {
         const isWalker = piece.effects?.some(e => e.type === 'walker');
@@ -152,17 +161,18 @@ function getPieceAttackSquares(board, pos, piece, state) {
  * controlled*, and a sliding piece controls up to and including
  * the first piece it sees in each direction.
  */
-function getSlidingAttackSquares(board, pos, _color, directions) {
+function getSlidingAttackSquares(board, pos, color, directions) {
     const attacks = [];
     for (const { dcol, drow } of directions) {
         let current = { col: pos.col + dcol, row: pos.row + drow };
         while ((0, Position_1.isInBounds)(current)) {
-            if (board.getCellEffects(current).some(e => e.type === 'mountain')) {
-                break;
+            if ((0, CellEffectBlockModifier_1.isSlidingBlocked)(board, current, color)) {
+                break; // Blocked by cell effect or special piece obstacle
             }
+            const piece = board.getPiece(current);
             attacks.push({ ...current });
             // Stop sliding after hitting any piece (but the square is still attacked)
-            if (board.getPiece(current)) {
+            if (piece) {
                 break;
             }
             current = { col: current.col + dcol, row: current.row + drow };
@@ -182,7 +192,7 @@ function getAttackedSquares(board, byColor, state) {
         for (let col = 0; col < Board_1.BOARD_SIZE; col++) {
             const pos = { col, row };
             const piece = board.getPiece(pos);
-            if (piece && piece.color === byColor) {
+            if (piece && (0, Piece_1.getPieceOwner)(piece) === byColor) {
                 const attacks = getPieceAttackSquares(board, pos, piece, state);
                 for (const atk of attacks) {
                     attackedSet.add(`${atk.col},${atk.row}`);
@@ -210,12 +220,18 @@ function getAttackedPieces(board, attackerColor, state) {
         for (let col = 0; col < Board_1.BOARD_SIZE; col++) {
             const attackerPos = { col, row };
             const attacker = board.getPiece(attackerPos);
-            if (!attacker || attacker.color !== attackerColor)
+            if (!attacker || (0, Piece_1.getPieceOwner)(attacker) !== attackerColor)
                 continue;
             const attacks = getPieceAttackSquares(board, attackerPos, attacker, state);
             for (const targetPos of attacks) {
                 const target = board.getPiece(targetPos);
-                if (target && target.color !== attackerColor) {
+                if (target && (0, Piece_1.getPieceOwner)(target) !== attackerColor) {
+                    if (target.specialType) {
+                        const def = SpecialPieceRegistry_1.specialPieceRegistry.get(target.specialType);
+                        if (def && def.canBeAttacked === false) {
+                            continue;
+                        }
+                    }
                     results.push({ attacker, target, attackerPos, targetPos });
                 }
             }
@@ -231,7 +247,7 @@ function isKingAttacked(board, kingColor, state) {
     for (let row = 0; row < Board_1.BOARD_SIZE; row++) {
         for (let col = 0; col < Board_1.BOARD_SIZE; col++) {
             const piece = board.getPiece({ col, row });
-            if (piece && piece.type === Piece_1.PieceType.King && piece.color === kingColor) {
+            if (piece && piece.type === Piece_1.PieceType.King && (0, Piece_1.getPieceOwner)(piece) === kingColor) {
                 const opponentColor = kingColor === Piece_1.Color.White ? Piece_1.Color.Black : Piece_1.Color.White;
                 return isSquareAttackedBy(board, { col, row }, opponentColor, state);
             }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { VARIANTS_LIST, VariantData } from '../lib/variantsData';
+import { VARIANTS_LIST, VariantData, getVariantImageSrc } from '../lib/variantsData';
 import { motion } from 'framer-motion';
 
 // Helper to get role accent colors
@@ -139,6 +139,17 @@ export default function VariantsViewer({ onClose }: VariantsViewerProps) {
 
   return (
     <div className="fixed inset-0 w-full h-full bg-[#0b0c16] text-[#cbd5e1] flex flex-col font-mono overflow-hidden z-30">
+      {/* Custom style to hide scrollbars */}
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
       {/* Background glowing effects */}
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#2a2b5e]/20 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#5f3333]/15 blur-[120px] pointer-events-none" />
@@ -174,7 +185,7 @@ export default function VariantsViewer({ onClose }: VariantsViewerProps) {
           </div>
 
           {/* Role Filters */}
-          <div className="flex flex-col gap-1 mb-3 max-h-[140px] overflow-y-auto pr-1">
+          <div className="flex flex-col gap-1 mb-3 max-h-[140px] overflow-y-auto no-scrollbar pr-1">
             <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-0.5">Filter by Role</span>
             <div className="flex flex-wrap gap-1">
               {roles.map((role) => (
@@ -194,7 +205,7 @@ export default function VariantsViewer({ onClose }: VariantsViewerProps) {
           </div>
 
           {/* Variant Grid */}
-          <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1.5">
+          <div className="flex-1 overflow-y-auto no-scrollbar pr-1 flex flex-col gap-1.5">
             <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-0.5">Variants</span>
             {filteredVariants.length === 0 ? (
               <div className="text-center text-xs text-slate-600 italic py-8">No variants found</div>
@@ -225,7 +236,7 @@ export default function VariantsViewer({ onClose }: VariantsViewerProps) {
                       <div className="w-9 h-9 rounded-full border border-slate-700 bg-slate-800/40 flex items-center justify-center overflow-hidden shrink-0 relative bg-[#111322]">
                         {!imgError[`catalog_${v.id}`] ? (
                           <img
-                            src={`/assets/variants/${v.id}.png`}
+                            src={getVariantImageSrc(v.id)}
                             alt={v.name}
                             className="w-full h-full object-cover"
                             onError={() => handleImgError(`catalog_${v.id}`)}
@@ -256,16 +267,6 @@ export default function VariantsViewer({ onClose }: VariantsViewerProps) {
           className="w-[76%] flex flex-col bg-[#0b0c16] relative overflow-hidden"
           style={{ borderTop: `3px solid ${activeRoleColor}` }}
         >
-          {/* Custom style to hide scrollbar in the skills section */}
-          <style>{`
-            .no-scrollbar::-webkit-scrollbar {
-              display: none;
-            }
-            .no-scrollbar {
-              -ms-overflow-style: none;
-              scrollbar-width: none;
-            }
-          `}</style>
 
           <motion.div
             key={selectedVariant.id}
@@ -279,7 +280,7 @@ export default function VariantsViewer({ onClose }: VariantsViewerProps) {
               {/* Variant Image Background */}
               {!imgError[`showcase_${selectedVariant.id}`] ? (
                 <img
-                  src={`/assets/variants/${selectedVariant.id}.png`}
+                  src={getVariantImageSrc(selectedVariant.id)}
                   alt={selectedVariant.name}
                   className="absolute inset-0 w-full h-full object-cover"
                   style={{ objectPosition: 'center 20%' }}

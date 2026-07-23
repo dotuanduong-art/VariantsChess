@@ -7,8 +7,12 @@ import { MoveModifier } from '../../modifier/MoveModifier';
 import { PRIORITY } from '../../event/ResolutionOrder';
 
 export class StunHandler implements EffectHandler {
-  effectType = 'stun' as EffectType;
+  effectType: EffectType;
   subscribesTo: GameEventType[] = [];
+
+  constructor(effectType: EffectType = 'stun' as EffectType) {
+    this.effectType = effectType;
+  }
 
   handle(
     event: GameEvent,
@@ -18,7 +22,7 @@ export class StunHandler implements EffectHandler {
     // Generic pipeline ticking handles durations, no custom event handling needed
   }
 
-  /** Block movement of stunned pieces */
+  /** Block movement of stunned/rooted pieces */
   validateAction(
     action: Action,
     activeEffects: Effect[],
@@ -26,22 +30,24 @@ export class StunHandler implements EffectHandler {
   ): string | null {
     if (action.type === 'MOVE_PIECE' || action.type === 'CAPTURE') {
       const pieceId = action.type === 'MOVE_PIECE' ? action.pieceId : action.attackerId;
-      const isStunned = activeEffects.some(
-        e => e.targetType === 'piece' && e.targetId === pieceId
+      const isActive = activeEffects.some(
+        e => e.targetType === 'piece' && e.targetId === pieceId && e.type === this.effectType
       );
-      if (isStunned) {
-        return 'This piece is stunned and cannot move';
+      if (isActive) {
+        const verb = this.effectType === 'stun' ? 'stunned' : `${this.effectType}ed`;
+        return `This piece is ${verb} and cannot move`;
       }
     }
+
     return null;
   }
 
-  /** Stunned pieces have no legal moves */
+  /** Stunned/rooted pieces have no legal moves */
   getMoveModifier(effect: Effect, state: Readonly<GameState>): MoveModifier | null {
     return {
-      id: `stun_${effect.id}`,
+      id: `${this.effectType}_${effect.id}`,
       priority: PRIORITY.STUN_BLOCK,
-      source: 'effect:stun',
+      source: `effect:${this.effectType}`,
       modify(moves, context) {
         if (effect.targetType === 'piece' && context.piece.id === effect.targetId) {
           return []; // no moves allowed
@@ -51,3 +57,4 @@ export class StunHandler implements EffectHandler {
     };
   }
 }
+

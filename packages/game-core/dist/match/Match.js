@@ -4,6 +4,7 @@
 // ============================================================
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Match = void 0;
+const Board_1 = require("../board/Board");
 const Position_1 = require("../board/Position");
 const Piece_1 = require("../pieces/Piece");
 const initialLayout_1 = require("../pieces/initialLayout");
@@ -14,10 +15,18 @@ const EventBus_1 = require("../event/EventBus");
 const MoveModifierChain_1 = require("../modifier/MoveModifierChain");
 const EffectRegistry_1 = require("../effect/EffectRegistry");
 const StunHandler_1 = require("../effect/handlers/StunHandler");
-const MountainHandler_1 = require("../effect/handlers/MountainHandler");
+const DevilEyeHandler_1 = require("../effect/handlers/DevilEyeHandler");
+const DevilTollHandler_1 = require("../effect/handlers/DevilTollHandler");
+const PredictionHandler_1 = require("../effect/handlers/PredictionHandler");
+const TimeFreezeHandler_1 = require("../effect/handlers/TimeFreezeHandler");
+const DragonGazeHandler_1 = require("../effect/handlers/DragonGazeHandler");
+const SummonDurationHandler_1 = require("../effect/handlers/SummonDurationHandler");
+const CellEffectBlockModifier_1 = require("../modifier/CellEffectBlockModifier");
 const VariantRegistry_1 = require("../variant/VariantRegistry");
 const allVariants_1 = require("../variant/allVariants");
 const DeterministicRng_1 = require("../rng/DeterministicRng");
+const KazehimeVariant_1 = require("../variant/variants/KazehimeVariant");
+const AttackDetection_1 = require("../combat/AttackDetection");
 class Match {
     state;
     pipeline;
@@ -39,19 +48,26 @@ class Match {
             this.variantRegistry.register(variant);
         }
         this.moveModifierChain = new MoveModifierChain_1.MoveModifierChain();
+        this.moveModifierChain.register(new CellEffectBlockModifier_1.CellEffectBlockModifier());
         this.pipeline = new ActionPipeline_1.ActionPipeline(this.state, this.snapshots, this.eventBus, this.moveModifierChain, this.variantRegistry);
         this.effectRegistry = new EffectRegistry_1.EffectRegistry();
         this.effectRegistry.register(new StunHandler_1.StunHandler());
-        this.effectRegistry.register(new MountainHandler_1.MountainHandler());
+        this.effectRegistry.register(new DevilEyeHandler_1.DevilEyeHandler());
+        this.effectRegistry.register(new DevilTollHandler_1.DevilTollHandler());
+        this.effectRegistry.register(new PredictionHandler_1.PredictionHandler());
+        this.effectRegistry.register(new TimeFreezeHandler_1.TimeFreezeHandler());
+        this.effectRegistry.register(new DragonGazeHandler_1.DragonGazeHandler());
+        this.effectRegistry.register(new SummonDurationHandler_1.SummonDurationHandler());
         // Wire effects
         this.effectRegistry.wireToEventBus(this.eventBus, this.state);
         this.effectRegistry.wireToValidationPipeline(this.pipeline, this.state);
         this.effectRegistry.wireToMoveModifierChain(this.moveModifierChain, this.state);
         // Register basic validators
         this.pipeline.addValidator(new ActionPipeline_1.BasicMoveValidator(this.moveModifierChain));
-        this.pipeline.addValidator(new ActionPipeline_1.TurnPhaseValidator());
+        this.pipeline.addValidator(new ActionPipeline_1.TurnPhaseValidator(this.variantRegistry));
         this.pipeline.addValidator(new ActionPipeline_1.APValidator(this.variantRegistry));
         this.pipeline.addValidator(new ActionPipeline_1.SkillValidator(this.variantRegistry));
+        this.pipeline.addValidator(new ActionPipeline_1.DevilTollValidator());
     }
     getTurnTimeoutMs() {
         if (this.turnTimeoutOverride !== null) {
@@ -80,7 +96,7 @@ class Match {
     /**
      * Attempt to make a move. Returns the result.
      */
-    makeMove(playerColor, from, to) {
+    makeMove(playerColor, from, to, moveType) {
         if (this.state.status !== 'playing') {
             return { success: false, reason: 'Match is not in progress' };
         }
@@ -135,12 +151,34 @@ class Match {
         // Get piece details before move
         const piece = this.state.board.getPiece(from);
         const target = this.state.board.getPiece(to);
+        const hasMainBefore = target?.effects?.some(e => e.type === 'main');
+        let isPredatorStealth = false;
+        if (piece) {
+            const ownerEffects = this.state.getPlayerEffects(piece.color);
+            const hasApexCamouflage = ownerEffects.some(e => e.type === 'apex_camouflage');
+            isPredatorStealth = !!(hasApexCamouflage &&
+                piece.type !== Piece_1.PieceType.King &&
+                !(this.state.variantState.revealedPieceIds || []).includes(piece.id));
+        }
+        const isStealthMove = !!(piece && (piece.effects?.some((e) => (e.type === 'ghost' && e.metadata?.stealth === true) ||
+            e.type === 'invisible' ||
+            e.type === 'stealth' ||
+            e.isHidden === true) ||
+            isPredatorStealth));
         if (!piece) {
             return { success: false, reason: 'No piece at starting position' };
         }
         // Create action details
         let action;
-        if (target) {
+        if (moveType === 'zombie_bite') {
+            action = {
+                type: 'ZOMBIE_BITE',
+                attackerId: piece.id,
+                attackerPosition: from,
+                targetPosition: to,
+            };
+        }
+        else if (target) {
             action = {
                 type: 'CAPTURE',
                 attackerId: piece.id,
@@ -162,15 +200,21 @@ class Match {
         if (!result.success) {
             return { success: false, reason: result.reason };
         }
-        if (target && this.state.board.getPiece(to) === target) {
+        if (action.type === 'CAPTURE' && target && this.state.board.getPiece(to) === target && !hasMainBefore) {
             return { success: false, reason: 'Captured piece is protected by shield' };
         }
         // Record move
-        this.moveHistory.push({ from: (0, Position_1.toAlgebraic)(from), to: (0, Position_1.toAlgebraic)(to) });
+        this.moveHistory.push({
+            from: (0, Position_1.toAlgebraic)(from),
+            to: (0, Position_1.toAlgebraic)(to),
+            isStealth: isStealthMove,
+            moverColor: playerColor,
+        });
         return {
             success: true,
             capturedPiece: target ? { type: target.type, color: target.color } : undefined,
             isKingCaptured: target?.type === Piece_1.PieceType.King,
+            isStealthMove,
         };
     }
     /**
@@ -198,10 +242,10 @@ class Match {
         this.state.whiteVariantId = whiteVariantId;
         this.state.blackVariantId = blackVariantId;
         if (whiteVariantId) {
-            this.variantRegistry.loadForPlayer(whiteVariantId, Piece_1.Color.White, this.effectRegistry, this.eventBus, this.moveModifierChain, this.state);
+            this.variantRegistry.loadForPlayer(whiteVariantId, Piece_1.Color.White, this.effectRegistry, this.eventBus, this.moveModifierChain, this.state, this.pipeline);
         }
         if (blackVariantId) {
-            this.variantRegistry.loadForPlayer(blackVariantId, Piece_1.Color.Black, this.effectRegistry, this.eventBus, this.moveModifierChain, this.state);
+            this.variantRegistry.loadForPlayer(blackVariantId, Piece_1.Color.Black, this.effectRegistry, this.eventBus, this.moveModifierChain, this.state, this.pipeline);
         }
         this.effectRegistry.wireToValidationPipeline(this.pipeline, this.state);
         this.effectRegistry.wireToMoveModifierChain(this.moveModifierChain, this.state);
@@ -334,7 +378,7 @@ class Match {
         };
     }
     getValidPositionsForRequirement(player, skill, reqIndex) {
-        const req = skill.getTargetRequirements()[reqIndex];
+        const req = skill.getTargetRequirements(this.state, player)[reqIndex];
         if (!req)
             return [];
         const positions = [];
@@ -358,11 +402,13 @@ class Match {
                         continue;
                     if (req.filter === 'enemy' && piece.color === player)
                         continue;
+                    if (req.pieceType && piece.type !== req.pieceType)
+                        continue;
                 }
                 else if (req.type === 'cell') {
                     if (req.filter === 'empty') {
                         const cellEffects = board.getCellEffects(pos) || [];
-                        const hasObstacle = cellEffects.some(e => e.type === 'flame' || e.type === 'mountain');
+                        const hasObstacle = cellEffects.some(e => e.type === 'flame');
                         if (piece || hasObstacle)
                             continue;
                     }
@@ -375,7 +421,109 @@ class Match {
                             continue;
                     }
                 }
+                // Check single-target validation dynamically
+                const reqs = skill.getTargetRequirements(this.state, player);
+                if (reqs.length === 1) {
+                    const testTarget = req.type === 'piece'
+                        ? { type: 'piece', position: pos, pieceId: piece?.id }
+                        : { type: 'cell', position: pos };
+                    if (skill.canActivate(this.state, player, [testTarget]) !== null) {
+                        continue;
+                    }
+                }
                 // 2. Extra skill-specific validation (dry-run/helpers)
+                if (skill.id === 'kaze_repel') {
+                    const cells = (0, KazehimeVariant_1.getCrossCells)(pos);
+                    let isValid = true;
+                    for (const c of cells) {
+                        if (c.col < 0 || c.col >= Board_1.BOARD_SIZE || c.row < 0 || c.row >= Board_1.BOARD_SIZE) {
+                            isValid = false;
+                            break;
+                        }
+                        if (board.getPiece(c)) {
+                            isValid = false;
+                            break;
+                        }
+                        const hasTrap = board.getCellEffects(c).some(e => e.type === 'repel' || e.type === 'soulless_cell');
+                        if (hasTrap) {
+                            isValid = false;
+                            break;
+                        }
+                    }
+                    if (!isValid)
+                        continue;
+                }
+                if (skill.id === 'kaze_soulless') {
+                    const cells = (0, KazehimeVariant_1.getXCells)(pos);
+                    let isValid = true;
+                    for (const c of cells) {
+                        if (c.col < 0 || c.col >= Board_1.BOARD_SIZE || c.row < 0 || c.row >= Board_1.BOARD_SIZE) {
+                            isValid = false;
+                            break;
+                        }
+                        if (board.getPiece(c)) {
+                            isValid = false;
+                            break;
+                        }
+                        const hasTrap = board.getCellEffects(c).some(e => e.type === 'repel' || e.type === 'soulless_cell');
+                        if (hasTrap) {
+                            isValid = false;
+                            break;
+                        }
+                    }
+                    if (!isValid)
+                        continue;
+                }
+                if (skill.id === 'predator_shadow_prowl') {
+                    if (!(0, AttackDetection_1.isSquareAttackedBy)(board, pos, player, this.state)) {
+                        continue;
+                    }
+                    const hasTrap = board.getCellEffects(pos).some(e => e.type === 'repel' || e.type === 'soulless_cell');
+                    if (hasTrap)
+                        continue;
+                }
+                if (skill.id === 'phoenix_ashes') {
+                    if (reqIndex === 0) {
+                        continue;
+                    }
+                }
+                if (skill.id === 'earth_shifting_peaks') {
+                    if (reqIndex === 0) {
+                        if (!piece || piece.specialType !== 'mountain' || piece.color !== player) {
+                            continue;
+                        }
+                    }
+                }
+                if (skill.id === 'turtle_transference') {
+                    if (reqIndex === 0) {
+                        if (!piece)
+                            continue;
+                        const isEnemy = piece.color !== player;
+                        const hasValidEffect = piece.effects?.some(e => {
+                            const isTransferableType = ['stun', 'shield', 'blessing', 'electron', 'ghost'].includes(e.type);
+                            if (!isTransferableType)
+                                return false;
+                            return isEnemy ? !e.isDebuff : e.isDebuff;
+                        });
+                        if (!hasValidEffect)
+                            continue;
+                    }
+                    if (reqIndex === 1) {
+                        if (!piece || piece.type === Piece_1.PieceType.King) {
+                            continue;
+                        }
+                    }
+                }
+                if (skill.id === 'zombie_infection') {
+                    if (piece && piece.effects && piece.effects.some(e => e.type === 'zombie' || e.type === 'walker')) {
+                        continue;
+                    }
+                }
+                if (skill.id === 'zombie_mutation') {
+                    if (!piece || !piece.effects || !piece.effects.some(e => e.type === 'walker')) {
+                        continue;
+                    }
+                }
                 if (skill.id === 'lightning_thunder_trap') {
                     const existing = board.getCellEffects(pos)
                         .find(e => e.type === 'thunder_trap' && e.sourcePlayer === player);
@@ -387,6 +535,11 @@ class Match {
                         continue;
                     }
                 }
+                if (skill.id === 'magician_swap_allies' || skill.id === 'magician_swap_movements') {
+                    if (piece && piece.effects && piece.effects.some(e => e.type === 'position_swap' || e.type === 'moveset_swap')) {
+                        continue;
+                    }
+                }
                 positions.push(pos);
             }
         }
@@ -394,6 +547,17 @@ class Match {
     }
     serializeForPlayer(player) {
         const serialized = this.state.serializeForPlayer(player);
+        const serializedHistory = this.moveHistory.map(entry => {
+            if (entry.isStealth && entry.moverColor !== player) {
+                return {
+                    from: '',
+                    to: '',
+                    isStealth: true,
+                    moverColor: entry.moverColor,
+                };
+            }
+            return entry;
+        });
         // Compute available skill targets
         const availableSkillTargets = {};
         // Only compute if it's the player's active turn and game is playing
@@ -402,16 +566,28 @@ class Match {
             if (variantId) {
                 const variant = this.variantRegistry.get(variantId);
                 if (variant) {
-                    const skillsDisabled = this.state.variantState.skillsDisabled === true;
-                    const maxSkillsPerTurn = 1;
+                    const isPhoenixSkillDisabled = variantId === 'phoenix' && this.state.variantState.phoenixSkillsDisabled?.[player] === true;
+                    const skillsDisabled = this.state.variantState.skillsDisabled === true || isPhoenixSkillDisabled;
+                    const maxSkillsPerTurn = variant.maxSkillsPerTurn ?? 1;
                     const skillsUsed = this.state.skillsUsedThisTurn ?? 0;
                     const ap = player === Piece_1.Color.White ? this.state.whiteAP : this.state.blackAP;
+                    const isPirateDebt = this.state.variantState[`pirateDebtEnabled_${player}`] === true;
                     if (!skillsDisabled && skillsUsed < maxSkillsPerTurn && !this.state.passSkillSubmitted) {
                         for (const skill of variant.skills) {
-                            const cost = typeof skill.apCost === 'function' ? skill.apCost(this.state, player) : skill.apCost;
-                            // Only expose targets if player has sufficient AP to cast
-                            if (ap >= cost) {
-                                const reqs = skill.getTargetRequirements();
+                            let cost = typeof skill.apCost === 'function' ? skill.apCost(this.state, player) : skill.apCost;
+                            if (this.state.getPlayerEffects(player).some(e => e.type === 'emerald_domain')) {
+                                cost += 1;
+                            }
+                            const hasUsedThisSkill = this.state.skillsUsedThisTurnIds?.includes(skill.id);
+                            let canAfford = false;
+                            if (isPirateDebt) {
+                                canAfford = ap >= 0 && (ap - cost >= -10);
+                            }
+                            else {
+                                canAfford = ap >= cost;
+                            }
+                            if (canAfford && !hasUsedThisSkill) {
+                                const reqs = skill.getTargetRequirements(this.state, player);
                                 const validPositions = [];
                                 for (let i = 0; i < reqs.length; i++) {
                                     validPositions.push(this.getValidPositionsForRequirement(player, skill, i));
@@ -419,14 +595,15 @@ class Match {
                                 availableSkillTargets[skill.id] = {
                                     requirements: reqs,
                                     validPositions,
+                                    currentCost: cost,
                                 };
                             }
                             else {
-                                // Return empty targets if AP is not enough
-                                const reqs = skill.getTargetRequirements();
+                                const reqs = skill.getTargetRequirements(this.state, player);
                                 availableSkillTargets[skill.id] = {
                                     requirements: reqs,
                                     validPositions: reqs.map(() => []),
+                                    currentCost: cost,
                                 };
                             }
                         }
@@ -434,9 +611,30 @@ class Match {
                 }
             }
         }
+        // Compute opponent skill costs (state-dependent, no validPositions needed)
+        const opponent = player === Piece_1.Color.White ? Piece_1.Color.Black : Piece_1.Color.White;
+        const opponentVariantId = opponent === Piece_1.Color.White
+            ? this.state.whiteVariantId : this.state.blackVariantId;
+        const opponentSkillCosts = {};
+        if (opponentVariantId) {
+            const opponentVariant = this.variantRegistry.get(opponentVariantId);
+            if (opponentVariant) {
+                const opponentHasEmeraldDomain = this.state.getPlayerEffects(opponent)
+                    .some(e => e.type === 'emerald_domain');
+                for (const skill of opponentVariant.skills) {
+                    let skillCost = typeof skill.apCost === 'function'
+                        ? skill.apCost(this.state, opponent) : skill.apCost;
+                    if (opponentHasEmeraldDomain)
+                        skillCost += 1;
+                    opponentSkillCosts[skill.id] = skillCost;
+                }
+            }
+        }
         return {
             ...serialized,
+            moveHistory: serializedHistory,
             availableSkillTargets,
+            opponentSkillCosts,
         };
     }
 }

@@ -1,1 +1,1 @@
-{"version":3,"file":"StubVariants.d.ts","sourceRoot":"","sources":["../../../src/variant/variants/StubVariants.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,iBAAiB,EAAE,MAAM,YAAY,CAAC;AA2B/C,eAAO,MAAM,aAAa,EAAE,iBAW3B,CAAC;AAIF,eAAO,MAAM,eAAe,EAAE,iBAW7B,CAAC;AAIF,eAAO,MAAM,YAAY,EAAE,iBAW1B,CAAC;AAEF,eAAO,MAAM,WAAW,EAAE,iBAWzB,CAAC"}
+{"version":3,"file":"StubVariants.d.ts","sourceRoot":"","sources":["../../../src/variant/variants/StubVariants.ts"],"names":[],"mappings":""}

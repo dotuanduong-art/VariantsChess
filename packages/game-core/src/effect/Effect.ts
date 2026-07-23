@@ -20,6 +20,7 @@ export type EffectType =
   | 'ghost'
   | 'repel'
   | 'soulless'
+  | 'soulless_cell'
   | 'flame'
   | 'mountain'
   | 'outworld'
@@ -34,7 +35,39 @@ export type EffectType =
   | 'landmine'
   | 'verdant_shelter'
   | 'sanctuary'
-  | 'electric_terrain';
+  | 'electric_terrain'
+  | 'position_swap'
+  | 'moveset_swap'
+  | 'enemy_position_swap'
+  | 'totem_timer'
+  | 'electric'
+  | 'thunder_fang'
+  | 'mountain_timer'
+  | 'reservation_timer'
+  | 'devour'
+  | 'apex_predator'
+  | 'possession_active'
+  | 'spirit_walk'
+  | 'prediction'
+  | 'time_freeze'
+  | 'evolution'
+  | 'apex_camouflage'
+  | 'dragon_gaze'
+  | 'emerald_domain'
+  | 'summon_duration'
+  | 'subterranean_escape'
+  | 'dragons_roar_channeling'
+  | 'dragons_roar_beam'
+  | 'no_promotion'
+  | 'supernova_warning'
+  | 'puppet_no_capture'
+  | 'puppet_control'
+  | 'puppet_trap'
+  | 'cosmic_void'
+  | 'sailing'
+  | 'pirate_bet';
+
+
 
 export interface Effect {
   id: string;                     // unique instance id (uuid)

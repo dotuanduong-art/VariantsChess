@@ -29,10 +29,19 @@ let GameGateway = class GameGateway {
             return;
         for (const player of room.players) {
             const playerState = room.match.serializeForPlayer(player.color);
-            this.server.to(player.socketId).emit(event, {
+            let payload = {
                 ...extraData,
                 ...playerState,
-            });
+            };
+            if (event === 'move-made' && extraData.isStealthMove && extraData.moverColor !== player.color) {
+                payload = {
+                    ...payload,
+                    from: null,
+                    to: null,
+                    stealthMove: true,
+                };
+            }
+            this.server.to(player.socketId).emit(event, payload);
         }
     }
     scheduleTurnTimeout(roomCode) {
@@ -165,15 +174,19 @@ let GameGateway = class GameGateway {
         this.scheduleTurnTimeout(data.roomCode);
     }
     handleMove(client, data) {
-        const result = this.gameService.makeMove(data.roomCode, data.playerId, data.from, data.to);
+        const result = this.gameService.makeMove(data.roomCode, data.playerId, data.from, data.to, data.moveType);
         if (!result.success) {
             client.emit('move-rejected', { reason: result.error });
             return;
         }
+        const room = this.gameService.getRoom(data.roomCode);
+        const mover = room?.players.find(p => p.id === data.playerId);
         this.emitStateToRoom(data.roomCode, 'move-made', {
             from: data.from,
             to: data.to,
             capturedPiece: result.capturedPiece,
+            isStealthMove: result.isStealthMove,
+            moverColor: mover?.color,
         });
         if (result.isKingCaptured && result.winner) {
             this.gameService.clearTurnTimeout(data.roomCode);
@@ -192,6 +205,39 @@ let GameGateway = class GameGateway {
         else {
             this.scheduleTurnTimeout(data.roomCode);
         }
+    }
+    handleSacrificePiece(client, data) {
+        const room = this.gameService.getRoom(data.roomCode);
+        if (!room || !room.match) {
+            client.emit('error', { message: 'Room or match not found' });
+            return;
+        }
+        const player = room.players.find(p => p.id === data.playerId);
+        if (!player) {
+            client.emit('error', { message: 'Player not found in room' });
+            return;
+        }
+        const result = room.match.submitAction({
+            type: 'SACRIFICE_PIECE',
+            pieceId: data.pieceId,
+            position: data.position,
+            player: player.color,
+        });
+        if (!result.success) {
+            client.emit('error', { message: result.reason || 'Sacrifice rejected' });
+            return;
+        }
+        this.emitStateToRoom(data.roomCode, 'move-made');
+        this.scheduleTurnTimeout(data.roomCode);
+    }
+    handleGetEnemyPieceMoves(client, data) {
+        const room = this.gameService.getRoom(data.roomCode);
+        if (!room || !room.match) {
+            client.emit('error', { message: 'Room or match not found' });
+            return;
+        }
+        const moves = room.match.getLegalMovesAt(data.position);
+        client.emit('enemy-piece-moves', { position: data.position, moves });
     }
     handleUseSkill(client, data) {
         const result = this.gameService.useSkill(data.roomCode, data.playerId, data.skillId, data.targets);
@@ -392,6 +438,22 @@ __decorate([
     __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", void 0)
 ], GameGateway.prototype, "handleMove", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('sacrifice-piece'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handleSacrificePiece", null);
+__decorate([
+    (0, websockets_1.SubscribeMessage)('get-enemy-piece-moves'),
+    __param(0, (0, websockets_1.ConnectedSocket)()),
+    __param(1, (0, websockets_1.MessageBody)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", void 0)
+], GameGateway.prototype, "handleGetEnemyPieceMoves", null);
 __decorate([
     (0, websockets_1.SubscribeMessage)('use-skill'),
     __param(0, (0, websockets_1.ConnectedSocket)()),

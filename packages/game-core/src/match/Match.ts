@@ -2,7 +2,7 @@
 // Match - Game session management
 // ============================================================
 
-import { Board } from '../board/Board';
+import { Board, BOARD_SIZE } from '../board/Board';
 import { Position, toAlgebraic } from '../board/Position';
 import { Color, PieceType } from '../pieces/Piece';
 import { createInitialBoard } from '../pieces/initialLayout';
@@ -16,27 +16,39 @@ import {
   APValidator,
   SkillValidator,
   ActionResult,
+  DevilTollValidator,
 } from '../action/ActionPipeline';
 import { SnapshotManager } from '../state/Snapshot';
 import { EventBus } from '../event/EventBus';
 import { MoveModifierChain } from '../modifier/MoveModifierChain';
 import { EffectRegistry } from '../effect/EffectRegistry';
 import { StunHandler } from '../effect/handlers/StunHandler';
-import { MountainHandler } from '../effect/handlers/MountainHandler';
 import { ShieldHandler } from '../effect/handlers/ShieldHandler';
 import { SanctuaryHandler } from '../effect/handlers/SanctuaryHandler';
+import { DevilEyeHandler } from '../effect/handlers/DevilEyeHandler';
+import { DevilTollHandler } from '../effect/handlers/DevilTollHandler';
+import { PredictionHandler } from '../effect/handlers/PredictionHandler';
+import { TimeFreezeHandler } from '../effect/handlers/TimeFreezeHandler';
+import { DragonGazeHandler } from '../effect/handlers/DragonGazeHandler';
+import { SummonDurationHandler } from '../effect/handlers/SummonDurationHandler';
+import { CellEffectBlockModifier } from '../modifier/CellEffectBlockModifier';
+
+
 import { VariantRegistry } from '../variant/VariantRegistry';
 import { ALL_VARIANTS } from '../variant/allVariants';
 import { SkillTarget } from '../variant/Skill';
 import { DeterministicRng } from '../rng/DeterministicRng';
+import { getCrossCells, getXCells } from '../variant/variants/KazehimeVariant';
+import { isSquareAttackedBy } from '../combat/AttackDetection';
 
 export type MatchStatus = 'waiting' | 'playing' | 'finished';
 
 export interface MoveResult {
   success: boolean;
   reason?: string;
-  capturedPiece?: { type: PieceType; color: Color };
+  capturedPiece?: { type: PieceType | string; color: Color };
   isKingCaptured?: boolean;
+  isStealthMove?: boolean;
 }
 
 export interface SerializedMatch {
@@ -44,7 +56,7 @@ export interface SerializedMatch {
   currentTurn: Color;
   status: MatchStatus;
   winner: Color | null;
-  moveHistory: { from: string; to: string }[];
+  moveHistory: { from: string; to: string; isStealth?: boolean; moverColor?: Color }[];
   whiteTimeLeft: number;
   blackTimeLeft: number;
   lastMoveTimestamp: number;
@@ -58,7 +70,7 @@ export class Match {
   private moveModifierChain: MoveModifierChain;
   private effectRegistry: EffectRegistry;
   private variantRegistry: VariantRegistry;
-  private moveHistory: { from: string; to: string }[] = [];
+  private moveHistory: { from: string; to: string; isStealth?: boolean; moverColor?: Color }[] = [];
 
   public turnTimeoutOverride: number | null = null;
 
@@ -75,11 +87,20 @@ export class Match {
     }
     
     this.moveModifierChain = new MoveModifierChain();
+    this.moveModifierChain.register(new CellEffectBlockModifier());
     this.pipeline = new ActionPipeline(this.state, this.snapshots, this.eventBus, this.moveModifierChain, this.variantRegistry);
 
     this.effectRegistry = new EffectRegistry();
     this.effectRegistry.register(new StunHandler());
-    this.effectRegistry.register(new MountainHandler());
+    this.effectRegistry.register(new DevilEyeHandler());
+    this.effectRegistry.register(new DevilTollHandler());
+    this.effectRegistry.register(new PredictionHandler());
+    this.effectRegistry.register(new TimeFreezeHandler());
+    this.effectRegistry.register(new DragonGazeHandler());
+    this.effectRegistry.register(new SummonDurationHandler());
+
+
+
 
     // Wire effects
     this.effectRegistry.wireToEventBus(this.eventBus, this.state);
@@ -88,9 +109,10 @@ export class Match {
 
     // Register basic validators
     this.pipeline.addValidator(new BasicMoveValidator(this.moveModifierChain));
-    this.pipeline.addValidator(new TurnPhaseValidator());
+    this.pipeline.addValidator(new TurnPhaseValidator(this.variantRegistry));
     this.pipeline.addValidator(new APValidator(this.variantRegistry));
     this.pipeline.addValidator(new SkillValidator(this.variantRegistry));
+    this.pipeline.addValidator(new DevilTollValidator());
   }
 
   getTurnTimeoutMs(): number {
@@ -124,7 +146,7 @@ export class Match {
   /**
    * Attempt to make a move. Returns the result.
    */
-  makeMove(playerColor: Color, from: Position, to: Position): MoveResult {
+  makeMove(playerColor: Color, from: Position, to: Position, moveType?: string): MoveResult {
     if (this.state.status !== 'playing') {
       return { success: false, reason: 'Match is not in progress' };
     }
@@ -184,6 +206,28 @@ export class Match {
     // Get piece details before move
     const piece = this.state.board.getPiece(from);
     const target = this.state.board.getPiece(to);
+    const hasMainBefore = target?.effects?.some(e => e.type === 'main');
+    
+    let isPredatorStealth = false;
+    if (piece) {
+      const ownerEffects = this.state.getPlayerEffects(piece.color);
+      const hasApexCamouflage = ownerEffects.some(e => e.type === 'apex_camouflage');
+      isPredatorStealth = !!(
+        hasApexCamouflage &&
+        piece.type !== PieceType.King &&
+        !(this.state.variantState.revealedPieceIds || []).includes(piece.id)
+      );
+    }
+
+    const isStealthMove = !!(piece && (
+      piece.effects?.some((e: any) => 
+        (e.type === 'ghost' && e.metadata?.stealth === true) || 
+        e.type === 'invisible' || 
+        e.type === 'stealth' || 
+        e.isHidden === true
+      ) ||
+      isPredatorStealth
+    ));
 
     if (!piece) {
       return { success: false, reason: 'No piece at starting position' };
@@ -191,7 +235,14 @@ export class Match {
 
     // Create action details
     let action: Action;
-    if (target) {
+    if (moveType === 'zombie_bite') {
+      action = {
+        type: 'ZOMBIE_BITE',
+        attackerId: piece.id,
+        attackerPosition: from,
+        targetPosition: to,
+      };
+    } else if (target) {
       action = {
         type: 'CAPTURE',
         attackerId: piece.id,
@@ -214,17 +265,23 @@ export class Match {
       return { success: false, reason: result.reason };
     }
 
-    if (target && this.state.board.getPiece(to) === target) {
+    if (action.type === 'CAPTURE' && target && this.state.board.getPiece(to) === target && !hasMainBefore) {
       return { success: false, reason: 'Captured piece is protected by shield' };
     }
 
     // Record move
-    this.moveHistory.push({ from: toAlgebraic(from), to: toAlgebraic(to) });
+    this.moveHistory.push({
+      from: toAlgebraic(from),
+      to: toAlgebraic(to),
+      isStealth: isStealthMove,
+      moverColor: playerColor,
+    });
 
     return {
       success: true,
       capturedPiece: target ? { type: target.type, color: target.color } : undefined,
       isKingCaptured: target?.type === PieceType.King,
+      isStealthMove,
     };
   }
 
@@ -265,7 +322,8 @@ export class Match {
         this.effectRegistry,
         this.eventBus,
         this.moveModifierChain,
-        this.state
+        this.state,
+        this.pipeline
       );
     }
 
@@ -276,7 +334,8 @@ export class Match {
         this.effectRegistry,
         this.eventBus,
         this.moveModifierChain,
-        this.state
+        this.state,
+        this.pipeline
       );
     }
     this.effectRegistry.wireToValidationPipeline(this.pipeline, this.state);
@@ -364,7 +423,7 @@ export class Match {
     return this.state.winner;
   }
 
-  getMoveHistory(): { from: string; to: string }[] {
+  getMoveHistory(): { from: string; to: string; isStealth?: boolean; moverColor?: Color }[] {
     return [...this.moveHistory];
   }
 
@@ -432,7 +491,7 @@ export class Match {
     skill: any,
     reqIndex: number
   ): Position[] {
-    const req = skill.getTargetRequirements()[reqIndex];
+    const req = skill.getTargetRequirements(this.state, player)[reqIndex];
     if (!req) return [];
 
     const positions: Position[] = [];
@@ -457,10 +516,11 @@ export class Match {
           if (!piece) continue;
           if (req.filter === 'ally' && piece.color !== player) continue;
           if (req.filter === 'enemy' && piece.color === player) continue;
+          if (req.pieceType && piece.type !== req.pieceType) continue;
         } else if (req.type === 'cell') {
           if (req.filter === 'empty') {
             const cellEffects = board.getCellEffects(pos) || [];
-            const hasObstacle = cellEffects.some(e => e.type === 'flame' || e.type === 'mountain');
+            const hasObstacle = cellEffects.some(e => e.type === 'flame');
             if (piece || hasObstacle) continue;
           }
           if (req.filter === 'ally') {
@@ -471,7 +531,118 @@ export class Match {
           }
         }
 
+        // Check single-target validation dynamically
+        const reqs = skill.getTargetRequirements(this.state, player);
+        if (reqs.length === 1) {
+          const testTarget = req.type === 'piece'
+            ? { type: 'piece', position: pos, pieceId: piece?.id }
+            : { type: 'cell', position: pos };
+          if (skill.canActivate(this.state, player, [testTarget]) !== null) {
+            continue;
+          }
+        }
+
         // 2. Extra skill-specific validation (dry-run/helpers)
+        if (skill.id === 'kaze_repel') {
+          const cells = getCrossCells(pos);
+          let isValid = true;
+          for (const c of cells) {
+            if (c.col < 0 || c.col >= BOARD_SIZE || c.row < 0 || c.row >= BOARD_SIZE) {
+              isValid = false;
+              break;
+            }
+            if (board.getPiece(c)) {
+              isValid = false;
+              break;
+            }
+            const hasTrap = board.getCellEffects(c).some(
+              e => e.type === 'repel' || e.type === 'soulless_cell'
+            );
+            if (hasTrap) {
+              isValid = false;
+              break;
+            }
+          }
+          if (!isValid) continue;
+        }
+
+        if (skill.id === 'kaze_soulless') {
+          const cells = getXCells(pos);
+          let isValid = true;
+          for (const c of cells) {
+            if (c.col < 0 || c.col >= BOARD_SIZE || c.row < 0 || c.row >= BOARD_SIZE) {
+              isValid = false;
+              break;
+            }
+            if (board.getPiece(c)) {
+              isValid = false;
+              break;
+            }
+            const hasTrap = board.getCellEffects(c).some(
+              e => e.type === 'repel' || e.type === 'soulless_cell'
+            );
+            if (hasTrap) {
+              isValid = false;
+              break;
+            }
+          }
+          if (!isValid) continue;
+        }
+
+        if (skill.id === 'predator_shadow_prowl') {
+          if (!isSquareAttackedBy(board, pos, player, this.state)) {
+            continue;
+          }
+          const hasTrap = board.getCellEffects(pos).some(
+            e => e.type === 'repel' || e.type === 'soulless_cell'
+          );
+          if (hasTrap) continue;
+        }
+
+        if (skill.id === 'phoenix_ashes') {
+          if (reqIndex === 0) {
+            continue;
+          }
+        }
+
+        if (skill.id === 'earth_shifting_peaks') {
+          if (reqIndex === 0) {
+            if (!piece || piece.specialType !== 'mountain' || piece.color !== player) {
+              continue;
+            }
+          }
+        }
+
+        if (skill.id === 'turtle_transference') {
+          if (reqIndex === 0) {
+            if (!piece) continue;
+            const isEnemy = piece.color !== player;
+            const hasValidEffect = piece.effects?.some(e => {
+              const isTransferableType = ['stun', 'shield', 'blessing', 'electron', 'ghost'].includes(e.type);
+              if (!isTransferableType) return false;
+              return isEnemy ? !e.isDebuff : e.isDebuff;
+            });
+            if (!hasValidEffect) continue;
+          }
+          if (reqIndex === 1) {
+            if (!piece || piece.type === PieceType.King) {
+              continue;
+            }
+          }
+        }
+
+        if (skill.id === 'zombie_infection') {
+          if (piece && piece.effects && piece.effects.some(e => e.type === 'zombie' || e.type === 'walker')) {
+            continue;
+          }
+        }
+
+        if (skill.id === 'zombie_mutation') {
+          if (!piece || !piece.effects || !piece.effects.some(e => e.type === 'walker')) {
+            continue;
+          }
+        }
+
         if (skill.id === 'lightning_thunder_trap') {
           const existing = board.getCellEffects(pos)
             .find(e => e.type === 'thunder_trap' && e.sourcePlayer === player);
@@ -480,6 +651,12 @@ export class Match {
 
         if (skill.id === 'dynamite_live_charge') {
           if (piece && piece.effects && piece.effects.some(e => e.type === 'bomb')) {
+            continue;
+          }
+        }
+
+        if (skill.id === 'magician_swap_allies' || skill.id === 'magician_swap_movements') {
+          if (piece && piece.effects && piece.effects.some(e => e.type === 'position_swap' || e.type === 'moveset_swap')) {
             continue;
           }
         }
@@ -493,10 +670,23 @@ export class Match {
   serializeForPlayer(player: Color) {
     const serialized = this.state.serializeForPlayer(player);
     
+    const serializedHistory = this.moveHistory.map(entry => {
+      if (entry.isStealth && entry.moverColor !== player) {
+        return {
+          from: '',
+          to: '',
+          isStealth: true,
+          moverColor: entry.moverColor,
+        };
+      }
+      return entry;
+    });
+
     // Compute available skill targets
     const availableSkillTargets: Record<string, {
       requirements: any[];
       validPositions: Position[][];
+      currentCost: number;
     }> = {};
 
     // Only compute if it's the player's active turn and game is playing
@@ -505,18 +695,31 @@ export class Match {
       if (variantId) {
         const variant = this.variantRegistry.get(variantId);
         if (variant) {
-          const skillsDisabled = this.state.variantState.skillsDisabled === true;
-          const maxSkillsPerTurn = 1;
+          const isPhoenixSkillDisabled = variantId === 'phoenix' && this.state.variantState.phoenixSkillsDisabled?.[player] === true;
+          const skillsDisabled = this.state.variantState.skillsDisabled === true || isPhoenixSkillDisabled;
+          const maxSkillsPerTurn = variant.maxSkillsPerTurn ?? 1;
           const skillsUsed = this.state.skillsUsedThisTurn ?? 0;
           const ap = player === Color.White ? this.state.whiteAP : this.state.blackAP;
+          const isPirateDebt = this.state.variantState[`pirateDebtEnabled_${player}`] === true;
 
           if (!skillsDisabled && skillsUsed < maxSkillsPerTurn && !this.state.passSkillSubmitted) {
             for (const skill of variant.skills) {
-              const cost = typeof skill.apCost === 'function' ? skill.apCost(this.state, player) : skill.apCost;
+              let cost = typeof skill.apCost === 'function' ? skill.apCost(this.state, player) : skill.apCost;
+              if (this.state.getPlayerEffects(player).some(e => e.type === 'emerald_domain')) {
+                cost += 1;
+              }
+              const hasUsedThisSkill = this.state.skillsUsedThisTurnIds?.includes(skill.id);
               
-              // Only expose targets if player has sufficient AP to cast
-              if (ap >= cost) {
-                const reqs = skill.getTargetRequirements();
+              let canAfford = false;
+              if (isPirateDebt) {
+                canAfford = ap >= 0 && (ap - cost >= -10);
+              } else {
+                canAfford = ap >= cost;
+              }
+              
+              if (canAfford && !hasUsedThisSkill) {
+
+                const reqs = skill.getTargetRequirements(this.state, player);
                 const validPositions: Position[][] = [];
                 for (let i = 0; i < reqs.length; i++) {
                   validPositions.push(this.getValidPositionsForRequirement(player, skill, i));
@@ -524,13 +727,14 @@ export class Match {
                 availableSkillTargets[skill.id] = {
                   requirements: reqs,
                   validPositions,
+                  currentCost: cost,
                 };
               } else {
-                // Return empty targets if AP is not enough
-                const reqs = skill.getTargetRequirements();
+                const reqs = skill.getTargetRequirements(this.state, player);
                 availableSkillTargets[skill.id] = {
                   requirements: reqs,
                   validPositions: reqs.map(() => []),
+                  currentCost: cost,
                 };
               }
             }
@@ -539,9 +743,30 @@ export class Match {
       }
     }
 
+    // Compute opponent skill costs (state-dependent, no validPositions needed)
+    const opponent = player === Color.White ? Color.Black : Color.White;
+    const opponentVariantId = opponent === Color.White
+      ? this.state.whiteVariantId : this.state.blackVariantId;
+    const opponentSkillCosts: Record<string, number> = {};
+    if (opponentVariantId) {
+      const opponentVariant = this.variantRegistry.get(opponentVariantId);
+      if (opponentVariant) {
+        const opponentHasEmeraldDomain = this.state.getPlayerEffects(opponent)
+          .some(e => e.type === 'emerald_domain');
+        for (const skill of opponentVariant.skills) {
+          let skillCost = typeof skill.apCost === 'function'
+            ? skill.apCost(this.state, opponent) : skill.apCost;
+          if (opponentHasEmeraldDomain) skillCost += 1;
+          opponentSkillCosts[skill.id] = skillCost;
+        }
+      }
+    }
+
     return {
       ...serialized,
+      moveHistory: serializedHistory,
       availableSkillTargets,
+      opponentSkillCosts,
     };
   }
 }

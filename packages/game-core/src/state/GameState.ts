@@ -1,11 +1,18 @@
 import { Board, SerializedBoard } from '../board/Board';
-import { Color } from '../pieces/Piece';
+import { Color, PieceType } from '../pieces/Piece';
 import { MatchStatus } from '../match/Match';
 import { ActionHistory } from '../action/ActionHistory';
 import { GraveyardEntry } from './Graveyard';
 import { Effect } from '../effect/Effect';
+import { Position } from '../board/Position';
 
 export type TurnPhase = 'start' | 'action' | 'resolution' | 'end' | 'cleanup';
+
+export interface PositionSnapshot {
+  turnNumber: number;
+  player: Color;
+  positions: { pieceId: string; position: Position }[];
+}
 
 export interface SerializedGameState {
   board: SerializedBoard;
@@ -16,6 +23,7 @@ export interface SerializedGameState {
   turnPhase: TurnPhase;
   hasMoved: boolean;
   skillsUsedThisTurn: number;
+  skillsUsedThisTurnIds: string[];
   passSkillSubmitted: boolean;
   whiteAP: number;
   blackAP: number;
@@ -32,6 +40,7 @@ export interface SerializedGameState {
   pendingDeadKings: Color[];
   whitePlayerEffects: Effect[];
   blackPlayerEffects: Effect[];
+  positionSnapshots?: PositionSnapshot[];
 }
 
 export class GameState {
@@ -45,6 +54,7 @@ export class GameState {
   turnPhase: TurnPhase;
   hasMoved: boolean;
   skillsUsedThisTurn: number;
+  skillsUsedThisTurnIds: string[];
   passSkillSubmitted: boolean;
 
   // AP economy
@@ -73,6 +83,7 @@ export class GameState {
   pendingDeadKings: Color[] = [];
   whitePlayerEffects: Effect[];
   blackPlayerEffects: Effect[];
+  positionSnapshots: PositionSnapshot[] = [];
 
   constructor(rngSeed = Date.now()) {
     this.board = new Board();
@@ -83,6 +94,7 @@ export class GameState {
     this.turnPhase = 'start';
     this.hasMoved = false;
     this.skillsUsedThisTurn = 0;
+    this.skillsUsedThisTurnIds = [];
     this.passSkillSubmitted = false;
     this.whiteAP = 0;
     this.blackAP = 0;
@@ -136,6 +148,7 @@ export class GameState {
       turnPhase: this.turnPhase,
       hasMoved: this.hasMoved,
       skillsUsedThisTurn: this.skillsUsedThisTurn,
+      skillsUsedThisTurnIds: [...(this.skillsUsedThisTurnIds || [])],
       passSkillSubmitted: this.passSkillSubmitted,
       whiteAP: this.whiteAP,
       blackAP: this.blackAP,
@@ -151,10 +164,15 @@ export class GameState {
       rngCounter: this.rngCounter,
       whiteVariantId: this.whiteVariantId,
       blackVariantId: this.blackVariantId,
-      variantState: { ...this.variantState },
+      variantState: this.variantState ? structuredClone(this.variantState) : {},
       pendingDeadKings: [...this.pendingDeadKings],
       whitePlayerEffects: this.whitePlayerEffects.map(e => ({ ...e })),
       blackPlayerEffects: this.blackPlayerEffects.map(e => ({ ...e })),
+      positionSnapshots: this.positionSnapshots ? this.positionSnapshots.map(s => ({
+        turnNumber: s.turnNumber,
+        player: s.player,
+        positions: s.positions.map(p => ({ pieceId: p.pieceId, position: { col: p.position.col, row: p.position.row } }))
+      })) : [],
     };
   }
 
@@ -186,12 +204,23 @@ export class GameState {
         if (!piece) return null;
         if (piece.color !== player) {
           const isInvisible = piece.effects?.some((e: any) =>
-            e.type === 'ghost' ||
+            (e.type === 'ghost' && e.metadata?.stealth === true) ||
             e.type === 'invisible' ||
             e.type === 'stealth' ||
             e.isHidden === true
           );
           if (isInvisible) return null;
+
+          // Apex Camouflage check
+          const hasApexCamouflage = this.getPlayerEffects(piece.color).some(
+            e => e.type === 'apex_camouflage'
+          );
+          if (hasApexCamouflage && piece.type !== PieceType.King) {
+            const revealedPieceIds = this.variantState.revealedPieceIds || [];
+            if (!revealedPieceIds.includes(piece.id)) {
+              return null;
+            }
+          }
         }
         return piece;
       })
@@ -210,6 +239,7 @@ export class GameState {
     state.turnPhase = data.turnPhase;
     state.hasMoved = data.hasMoved;
     state.skillsUsedThisTurn = data.skillsUsedThisTurn;
+    state.skillsUsedThisTurnIds = data.skillsUsedThisTurnIds ? [...data.skillsUsedThisTurnIds] : [];
     state.passSkillSubmitted = data.passSkillSubmitted;
     state.whiteAP = data.whiteAP;
     state.blackAP = data.blackAP;
@@ -228,6 +258,11 @@ export class GameState {
     state.pendingDeadKings = data.pendingDeadKings ? [...data.pendingDeadKings] : [];
     state.whitePlayerEffects = data.whitePlayerEffects ? data.whitePlayerEffects.map(e => ({ ...e })) : [];
     state.blackPlayerEffects = data.blackPlayerEffects ? data.blackPlayerEffects.map(e => ({ ...e })) : [];
+    state.positionSnapshots = data.positionSnapshots ? data.positionSnapshots.map(s => ({
+      turnNumber: s.turnNumber,
+      player: s.player,
+      positions: s.positions.map(p => ({ pieceId: p.pieceId, position: { col: p.position.col, row: p.position.row } }))
+    })) : [];
     return state;
   }
 }

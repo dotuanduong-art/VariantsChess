@@ -1,4 +1,4 @@
-import { Match, Color, Position, PieceType, Effect, Board, GameState, getAttackedSquares } from 'game-core';
+import { Match, Color, Position, PieceType, Effect, Board, GameState, getAttackedSquares, Piece } from 'game-core';
 
 describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
   let match: Match;
@@ -10,8 +10,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     match.start();
   });
 
-  // T1: Apply shield lên piece → piece có effect shield trong effects[], remainingDuration = 4 (turns)
-  it('T1: should apply shield to a piece with remainingDuration = 4 turns', () => {
+  // T1: Apply shield lên piece → piece có effect shield trong effects[], remainingDuration = 2 (rounds)
+  it('T1: should apply shield to a piece with remainingDuration = 2 rounds', () => {
     const state = match.getGameState();
     state.whiteAP = 5;
 
@@ -29,23 +29,23 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     expect(result.success).toBe(true);
     expect(pawn!.effects.length).toBe(1);
     expect(pawn!.effects[0].type).toBe('shield');
-    expect(pawn!.effects[0].remainingDuration).toBe(4);
+    expect(pawn!.effects[0].remainingDuration).toBe(2);
     expect(pawn!.effects[0].isHidden).toBe(false);
     expect(pawn!.effects[0].isDebuff).toBe(false);
   });
 
-  // T2: Shield piece bị địch capture → capture bị cancel, shield remainingDuration giảm 1 turn (còn 3)
+  // T2: Shield piece bị địch capture → capture bị cancel, shield remainingDuration giảm 1 turn (còn 1)
   it('T2: should cancel capture on a shielded piece and decrement shield duration', () => {
     const state = match.getGameState();
     state.board = new Board();
 
-    // Place White Rook at E5 (4, 4) with shield (remainingDuration = 4)
+    // Place White Rook at E5 (4, 4) with shield (remainingDuration = 2)
     const rookPos: Position = { col: 4, row: 4 };
     const shieldEffect: Effect = {
       id: 'shield_rook',
       type: 'shield' as any,
-      duration: 4,
-      remainingDuration: 4,
+      duration: 2,
+      remainingDuration: 2,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'piece',
@@ -86,9 +86,9 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     expect(moveResult.success).toBe(false);
     expect(moveResult.reason).toContain('shield');
 
-    // Shield remaining duration should decrement to 3
+    // Shield remaining duration should decrement to 1
     expect(rook.effects.length).toBe(1);
-    expect(rook.effects[0].remainingDuration).toBe(3);
+    expect(rook.effects[0].remainingDuration).toBe(1);
 
     // Queen should still be at E6 (4, 5) and Rook at E5 (4, 4)
     expect(state.board.getPiece(queenPos)).toBe(queen);
@@ -156,8 +156,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const shieldEffect: Effect = {
       id: 'shield_rook',
       type: 'shield' as any,
-      duration: 4,
-      remainingDuration: 4,
+      duration: 2,
+      remainingDuration: 2,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'piece',
@@ -187,7 +187,7 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     expect(state.board.getPiece(rookPos)).toBeNull();
   });
 
-  // T5: Shield refresh: apply shield lên piece đã có shield remainingDuration = 2 → duration reset về 4 turns (2 rounds), không stack 2 shield
+  // T5: Shield refresh: apply shield lên piece đã có shield remainingDuration = 1 → duration reset về 2 rounds, không stack 2 shield
   it('T5: should refresh shield duration and not stack shields', () => {
     const state = match.getGameState();
     state.whiteAP = 10;
@@ -199,10 +199,10 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     // 1st Shield apply
     match.useSkill(Color.White, 'guardian_shield', [{ type: 'piece', position: targetPos, pieceId: pawn!.id }]);
     expect(pawn!.effects.length).toBe(1);
-    expect(pawn!.effects[0].remainingDuration).toBe(4);
+    expect(pawn!.effects[0].remainingDuration).toBe(2);
 
-    // Set remaining duration to 2 manually
-    pawn!.effects[0].remainingDuration = 2;
+    // Set remaining duration to 1 manually
+    pawn!.effects[0].remainingDuration = 1;
 
     // We must reset skillsUsedThisTurn to allow using skill again on the same turn!
     state.skillsUsedThisTurn = 0;
@@ -210,12 +210,12 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     // 2nd Shield apply
     match.useSkill(Color.White, 'guardian_shield', [{ type: 'piece', position: targetPos, pieceId: pawn!.id }]);
     
-    // Expect duration reset to 4, and still only 1 shield effect
+    // Expect duration reset to 2, and still only 1 shield effect
     expect(pawn!.effects.length).toBe(1);
-    expect(pawn!.effects[0].remainingDuration).toBe(4);
+    expect(pawn!.effects[0].remainingDuration).toBe(2);
   });
 
-  // T6: Shield tick đúng theo turn: sau 2 turns (1 round), remainingDuration = 2 (còn 1 round)
+  // T6: Shield tick đúng theo turn: sau 1 turn end của White, remainingDuration = 1. Sau turn end tiếp theo của White, shield biến mất
   it('T6: should tick shield duration down properly on turn ends', () => {
     const state = match.getGameState();
     const targetPos: Position = { col: 3, row: 1 };
@@ -223,14 +223,14 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
 
     state.whiteAP = 5;
     match.useSkill(Color.White, 'guardian_shield', [{ type: 'piece', position: targetPos, pieceId: pawn!.id }]);
-    expect(pawn!.effects[0].remainingDuration).toBe(4);
+    expect(pawn!.effects[0].remainingDuration).toBe(2);
 
     // Set appliedTurn to turnNumber - 1 so it ticks down on the same turn end
     pawn!.effects[0].metadata.appliedTurn = state.turnNumber - 1;
 
     // End White Turn (ticks White effects: duration -1)
     match.submitAction({ type: 'END_TURN', player: Color.White });
-    expect(pawn!.effects[0].remainingDuration).toBe(3);
+    expect(pawn!.effects[0].remainingDuration).toBe(1);
 
     // End Black Turn (ticks Black effects: White effect does NOT tick on Black turn end because active player is Black and effect is White piece)
     // Wait, let's verify if tickTiming ticks on active player's turnEnd or any turnEnd.
@@ -239,15 +239,15 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     // Yes! A piece's effects tick ONLY at the end of its owner's turn!
     // So Black's turn end will not tick White Pawn's shield.
     match.submitAction({ type: 'END_TURN', player: Color.Black });
-    expect(pawn!.effects[0].remainingDuration).toBe(3);
+    expect(pawn!.effects[0].remainingDuration).toBe(1);
 
     // End White Turn again (ticks White effects: duration -1)
     match.submitAction({ type: 'END_TURN', player: Color.White });
-    expect(pawn!.effects[0].remainingDuration).toBe(2);
+    expect(pawn!.effects.length).toBe(0);
   });
 
-  // T7: Skill 2 tạo vùng 3x3 tại trung tâm C3 → 9 ô (B2:D4) có sanctuary cell effect, mỗi ô có remainingDuration = 8 turns (= 4 rounds)
-  it('T7: should create a 3x3 Sanctuary zone with duration = 8 turns', () => {
+  // T7: Skill 2 tạo vùng 3x3 tại trung tâm C3 → 9 ô (B2:D4) có sanctuary cell effect, mỗi ô có remainingDuration = 4 rounds
+  it('T7: should create a 3x3 Sanctuary zone with duration = 4 rounds', () => {
     const state = match.getGameState();
     state.whiteAP = 5;
 
@@ -265,12 +265,12 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
         const effects = state.board.getCellEffects({ col, row });
         expect(effects.length).toBe(1);
         expect(effects[0].type).toBe('sanctuary');
-        expect(effects[0].remainingDuration).toBe(8);
+        expect(effects[0].remainingDuration).toBe(4);
       }
     }
   });
 
-  // T8: Địch ăn quân ta trong vùng sanctuary → địch bị stun remainingDuration = 4 turns (= 2 rounds)
+  // T8: Địch ăn quân ta trong vùng sanctuary → địch bị stun remainingDuration = 2 rounds
   it('T8: should stun enemies who capture allies inside Sanctuary', () => {
     const state = match.getGameState();
     state.board = new Board();
@@ -287,7 +287,7 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
 
     // Place Black Rook at C4 (col: 2, row: 3)
     const enemyPos: Position = { col: 2, row: 3 };
-    const enemyRook = {
+    const enemyRook: Piece = {
       id: 'b_rook_attacker',
       type: PieceType.Rook,
       color: Color.Black,
@@ -299,8 +299,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const sanctuaryEffect: Effect = {
       id: 'sanc_c3',
       type: 'sanctuary' as any,
-      duration: 8,
-      remainingDuration: 8,
+      duration: 4,
+      remainingDuration: 4,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'cell',
@@ -323,10 +323,10 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     // Attacking Black Rook is now at C3 (2, 2)
     expect(state.board.getPiece(allyPos)).toBe(enemyRook);
 
-    // Black Rook should be stunned with duration 4
+    // Black Rook should be stunned with duration 2
     expect(enemyRook.effects.length).toBe(1);
     expect(enemyRook.effects[0].type).toBe('stun');
-    expect(enemyRook.effects[0].remainingDuration).toBe(4);
+    expect(enemyRook.effects[0].remainingDuration).toBe(2);
     expect(enemyRook.effects[0].sourcePlayer).toBe(Color.White);
   });
 
@@ -359,8 +359,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     state.board.addCellEffect({ col: 2, row: 2 }, {
       id: 'sanc_c3',
       type: 'sanctuary' as any,
-      duration: 8,
-      remainingDuration: 8,
+      duration: 4,
+      remainingDuration: 4,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'cell',
@@ -409,8 +409,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const sanctuaryEffect: Effect = {
       id: 'sanc_c3',
       type: 'sanctuary' as any,
-      duration: 8,
-      remainingDuration: 8,
+      duration: 4,
+      remainingDuration: 4,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'cell',
@@ -434,8 +434,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     expect(allyRook.effects.length).toBe(0);
   });
 
-  // T11: Sanctuary tick đúng: sau 4 turns (2 rounds), remainingDuration = 4. Sau 8 turns, sanctuary expire và bị xoá
-  it('T11: should tick down Sanctuary duration on turn ends and expire it after 8 turns', () => {
+  // T11: Sanctuary tick đúng: sau 2 turns (1 round), remainingDuration = 2. Sau 4 turns, sanctuary expire và bị xoá
+  it('T11: should tick down Sanctuary duration on turn ends and expire it after 4 turns', () => {
     const state = match.getGameState();
     state.board = new Board();
 
@@ -443,8 +443,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const sanctuaryEffect: Effect = {
       id: 'sanc_c3',
       type: 'sanctuary' as any,
-      duration: 8,
-      remainingDuration: 8,
+      duration: 4,
+      remainingDuration: 4,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'cell',
@@ -459,25 +459,35 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     // End turns. Tick timing is turnEnd.
     // White ends turn: decreases duration by 1
     match.submitAction({ type: 'END_TURN', player: Color.White });
-    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(7);
+    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(3);
 
-    // Black ends turn: decreases duration by 1 (cell effects do not check owner color for tick)
+    // Black ends turn: does not decrease duration because source player is White
     match.submitAction({ type: 'END_TURN', player: Color.Black });
-    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(6);
+    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(3);
 
-    // We do 5 more turn ends (total 7 turns ended)
-    for (let i = 0; i < 5; i++) {
-      match.submitAction({ type: 'END_TURN', player: state.currentTurn });
-    }
+    // White ends turn: decreases duration by 1 (total remaining = 2)
+    match.submitAction({ type: 'END_TURN', player: Color.White });
+    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(2);
+
+    // Black ends turn: does not decrease duration
+    match.submitAction({ type: 'END_TURN', player: Color.Black });
+    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(2);
+
+    // White ends turn: decreases duration by 1 (total remaining = 1)
+    match.submitAction({ type: 'END_TURN', player: Color.White });
     expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(1);
 
-    // End 8th turn: should expire
-    match.submitAction({ type: 'END_TURN', player: state.currentTurn });
+    // Black ends turn: does not decrease duration
+    match.submitAction({ type: 'END_TURN', player: Color.Black });
+    expect(state.board.getCellEffects(pos)[0].remainingDuration).toBe(1);
+
+    // White ends turn: decreases duration to 0 -> expires and is removed
+    match.submitAction({ type: 'END_TURN', player: Color.White });
     expect(state.board.getCellEffects(pos).length).toBe(0);
   });
 
   // T12: Ultimate → tất cả quân ta (không phải địch) có shield remainingDuration = 10 turns (= 5 rounds)
-  it('T12: should apply shield to all friendly pieces for 10 turns', () => {
+  it('T12: should apply shield to all friendly pieces for 5 rounds', () => {
     const state = match.getGameState();
     state.whiteAP = 15;
 
@@ -485,14 +495,14 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const result = match.useSkill(Color.White, 'guardian_ultimate', []);
     expect(result.success).toBe(true);
 
-    // Assert that all White pieces have the shield effect with remainingDuration = 10
+    // Assert that all White pieces have the shield effect with remainingDuration = 5
     // and no Black pieces have it
     for (let r = 0; r < 15; r++) {
       for (let c = 0; c < 15; c++) {
         const piece = state.board.getPiece({ col: c, row: r });
         if (piece) {
           if (piece.color === Color.White) {
-            expect(piece.effects.some(e => e.type === 'shield' && e.remainingDuration === 10)).toBe(true);
+            expect(piece.effects.some(e => e.type === 'shield' && e.remainingDuration === 5)).toBe(true);
           } else {
             expect(piece.effects.some(e => e.type === 'shield')).toBe(false);
           }
@@ -501,18 +511,18 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     }
   });
 
-  // T13: Ultimate → quân ta đã có shield remainingDuration = 2 turns → refresh lên 10 turns (không stack)
-  it('T13: should refresh existing shields on allies to 10 turns instead of stacking', () => {
+  // T13: Ultimate → quân ta đã có shield remainingDuration = 1 round → refresh lên 5 rounds (không stack)
+  it('T13: should refresh existing shields on allies to 5 rounds instead of stacking', () => {
     const state = match.getGameState();
     const pawn = state.board.getPiece({ col: 3, row: 1 });
     expect(pawn).not.toBeNull();
 
-    // Setup: Pawn already has shield with duration 2
+    // Setup: Pawn already has shield with duration 1 round
     pawn!.effects.push({
       id: 'existing_shield',
       type: 'shield' as any,
-      duration: 4,
-      remainingDuration: 2,
+      duration: 2,
+      remainingDuration: 1,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'piece',
@@ -527,9 +537,9 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const result = match.useSkill(Color.White, 'guardian_ultimate', []);
     expect(result.success).toBe(true);
 
-    // Expect White pawn to have exactly 1 shield effect with duration 10
+    // Expect White pawn to have exactly 1 shield effect with duration 5
     expect(pawn!.effects.length).toBe(1);
-    expect(pawn!.effects[0].remainingDuration).toBe(10);
+    expect(pawn!.effects[0].remainingDuration).toBe(5);
   });
 
   // T14: Ultimate tốn đúng AP theo spec (đề xuất 8 AP và đánh dấu TODO)
@@ -543,7 +553,7 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
   });
 
   // T15: Full flow — White dùng Guardian Skill 1, Black capture White piece có shield:
-  // capture bị cancel → Black piece không di chuyển → White piece vẫn ở vị trí cũ → shield remainingDuration giảm từ 4 xuống 3
+  // capture bị cancel → Black piece không di chuyển → White piece vẫn ở vị trí cũ → shield remainingDuration giảm từ 2 xuống 1
   it('T15: should verify full game flow for a cancelled capture on a shielded piece', () => {
     const state = match.getGameState();
     state.board = new Board();
@@ -551,7 +561,7 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const allyPos: Position = { col: 4, row: 4 }; // E5
     const enemyPos: Position = { col: 4, row: 5 }; // E6
 
-    const whitePawn = {
+    const whitePawn: Piece = {
       id: 'w_pawn_flow',
       type: PieceType.Pawn,
       color: Color.White,
@@ -581,15 +591,16 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
 
     // End White Turn
     match.submitAction({ type: 'END_TURN', player: Color.White });
-    expect(whitePawn.effects[0].remainingDuration).toBe(3); // Ticked down on White turnEnd
+    expect(whitePawn.effects[0].remainingDuration).toBe(1); // Ticked down on White turnEnd
 
     // Black Rook tries to capture White Pawn
     const moveRes = match.makeMove(Color.Black, enemyPos, allyPos);
     expect(moveRes.success).toBe(false);
     expect(moveRes.reason).toContain('shield');
 
-    // Durations tick timing is turnEnd, remainingDuration decreased by 1 due to cancelled capture
-    expect(whitePawn.effects[0].remainingDuration).toBe(2);
+    // End Black Turn (triggers OnTurnEnd which cleans up the expired shield)
+    match.submitAction({ type: 'END_TURN', player: Color.Black });
+    expect(whitePawn.effects.length).toBe(0);
 
     // Positions unchanged
     expect(state.board.getPiece(allyPos)).toBe(whitePawn);
@@ -597,7 +608,7 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
   });
 
   // T16: Full flow — White dùng Guardian Skill 2, Black capture White piece trong vùng:
-  // capture thành công (không có shield) + Black piece bị stun remainingDuration = 4 turns ngay sau
+  // capture thành công (không có shield) + Black piece bị stun remainingDuration = 2 rounds ngay sau
   it('T16: should verify full game flow for Sanctuary stun zone', () => {
     const state = match.getGameState();
     state.board = new Board();
@@ -613,7 +624,7 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     };
     state.board.setPiece(allyPos, whitePawn);
 
-    const blackRook = {
+    const blackRook: Piece = {
       id: 'b_rook_flow',
       type: PieceType.Rook,
       color: Color.Black,
@@ -640,10 +651,10 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     expect(state.board.getPiece(allyPos)).toBe(blackRook);
     expect(state.board.getPiece(enemyPos)).toBeNull();
 
-    // Black Rook is stunned for 4 turns
+    // Black Rook is stunned for 2 rounds
     expect(blackRook.effects.length).toBe(1);
     expect(blackRook.effects[0].type).toBe('stun');
-    expect(blackRook.effects[0].remainingDuration).toBe(4);
+    expect(blackRook.effects[0].remainingDuration).toBe(2);
   });
 
   // T17: Variant load/unload — Guardian unload → tất cả handlers bị remove khỏi EventBus,
@@ -658,8 +669,8 @@ describe('Chess Variant Engine - Guardian Variant (TDD)', () => {
     const shieldEffect: Effect = {
       id: 'shield_test',
       type: 'shield' as any,
-      duration: 4,
-      remainingDuration: 4,
+      duration: 2,
+      remainingDuration: 2,
       tickTiming: 'turnEnd',
       sourcePlayer: Color.White,
       targetType: 'piece',

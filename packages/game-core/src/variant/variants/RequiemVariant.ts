@@ -3,6 +3,7 @@ import { Color, PieceType } from '../../pieces/Piece';
 import { Action } from '../../action/Action';
 import { FateHandler } from '../../effect/handlers/FateHandler';
 import { BerserkHandler } from '../../effect/handlers/BerserkHandler';
+import { APCostConfig } from '../apCostConfig';
 
 export const RequiemVariant: VariantDefinition = {
   id: 'requiem',
@@ -36,7 +37,7 @@ export const RequiemVariant: VariantDefinition = {
       name: 'Soul Break',
       description: 'Chọn 1 quân địch (trừ King) để nguyền rủa bằng Berserk.',
       tier: 'skill1',
-      apCost: 4,
+      apCost: APCostConfig.requiem.requiem_skill_1,
       cooldown: 0,
       usageRule: 'once_per_turn',
 
@@ -88,7 +89,7 @@ export const RequiemVariant: VariantDefinition = {
       name: 'Thread of Fate',
       description: 'Liên kết sinh mệnh giữa 1 quân đồng minh và 1 quân địch. Khi 1 quân chết, quân kia cũng chết theo.',
       tier: 'skill2',
-      apCost: 6,
+      apCost: APCostConfig.requiem.requiem_skill_2,
       cooldown: 0,
       usageRule: 'once_per_turn',
 
@@ -174,7 +175,7 @@ export const RequiemVariant: VariantDefinition = {
       name: "Reaper's Decree",
       description: 'Gắn hiệu ứng Fate lên 2 quân địch. Khi 1 quân chết, quân kia cũng chết theo.',
       tier: 'ultimate',
-      apCost: 10,
+      apCost: APCostConfig.requiem.requiem_ultimate,
       cooldown: 0,
       usageRule: 'once_per_turn',
 

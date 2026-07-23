@@ -9,5 +9,5 @@ import { Color } from '../pieces/Piece';
 export declare function getSlidingMoves(board: Board, pos: Position, color: Color, directions: {
     dcol: number;
     drow: number;
-}[]): Position[];
+}[], allowAllyCapture?: boolean): Position[];
 //# sourceMappingURL=slidingMoves.d.ts.map

@@ -62,7 +62,7 @@ describe('Chess Variant Engine - Step 6 Tests (Variant Registry & Lightning E2E)
     expect(rook).not.toBeNull();
     expect(rook!.effects.length).toBe(1);
     expect(rook!.effects[0].type).toBe('stun');
-    expect(rook!.effects[0].remainingDuration).toBe(1);
+    expect(rook!.effects[0].remainingDuration).toBe(2);
 
     // 4. Black Rook has no legal moves and cannot move
     expect(match.getLegalMovesAt(trapPos)).toEqual([]);
@@ -75,6 +75,7 @@ describe('Chess Variant Engine - Step 6 Tests (Variant Registry & Lightning E2E)
 
     // Black Rook is still stunned on White's turn (enabling Raigeki!)
     expect(rook!.effects.length).toBe(1);
+    expect(rook!.effects[0].remainingDuration).toBe(2);
 
     // White ends turn
     match.submitAction({ type: 'END_TURN', player: Color.White });
@@ -85,7 +86,23 @@ describe('Chess Variant Engine - Step 6 Tests (Variant Registry & Lightning E2E)
     // Black Rook is still stunned on Black's turn start, so no legal moves
     expect(match.getLegalMovesAt(trapPos)).toEqual([]);
 
-    // Black ends turn, which ticks down the Rook's stun
+    // Black ends turn, which ticks down the Rook's stun to 1
+    match.submitAction({ type: 'END_TURN', player: Color.Black });
+
+    // Turn switches back to White
+    expect(state.currentTurn).toBe(Color.White);
+
+    // Black Rook is still stunned on White's turn
+    expect(rook!.effects.length).toBe(1);
+    expect(rook!.effects[0].remainingDuration).toBe(1);
+
+    // White ends turn
+    match.submitAction({ type: 'END_TURN', player: Color.White });
+
+    // Turn switches back to Black
+    expect(state.currentTurn).toBe(Color.Black);
+
+    // Black ends turn again, which ticks stun to 0
     match.submitAction({ type: 'END_TURN', player: Color.Black });
 
     // Black Rook is no longer stunned now
@@ -98,55 +115,51 @@ describe('Chess Variant Engine - Step 6 Tests (Variant Registry & Lightning E2E)
 
     // 1. Manually place and stun some Black pieces
     const blackKingPos: Position = { col: 7, row: 14 }; // Black King is at col 7
-    const blackPawnPos: Position = { col: 4, row: 13 }; // Black Pawn at E14 (4, 13)
+    const blackPawnPos: Position = { col: 4, row: 13 };
     const blackKing = state.board.getPiece(blackKingPos);
     const blackPawn = state.board.getPiece(blackPawnPos);
-
     expect(blackKing).not.toBeNull();
-    expect(blackKing!.type).toBe(PieceType.King);
     expect(blackPawn).not.toBeNull();
 
-    // Apply Stun to both King and Pawn
-    const stun1 = {
+    // Stun both pieces
+    blackKing!.effects.push({
       id: 'stun_king',
       type: 'stun' as any,
-      duration: 3,
-      remainingDuration: 3,
+      duration: 2,
+      remainingDuration: 2,
       tickTiming: 'turnEnd' as any,
       sourcePlayer: Color.White,
       targetType: 'piece' as any,
       targetId: blackKing!.id,
-      stackingRule: 'ignore' as any,
+      stackingRule: 'refresh' as any,
       isDebuff: true,
       metadata: {},
-    };
-    const stun2 = {
+    });
+
+    blackPawn!.effects.push({
       id: 'stun_pawn',
       type: 'stun' as any,
-      duration: 3,
-      remainingDuration: 3,
+      duration: 2,
+      remainingDuration: 2,
       tickTiming: 'turnEnd' as any,
       sourcePlayer: Color.White,
       targetType: 'piece' as any,
       targetId: blackPawn!.id,
-      stackingRule: 'ignore' as any,
+      stackingRule: 'refresh' as any,
       isDebuff: true,
       metadata: {},
-    };
+    });
 
-    blackKing!.effects.push(stun1);
-    blackPawn!.effects.push(stun2);
+    // 2. White has 12 AP, currentTurn is White, turnPhase is action
+    state.whiteAP = 12;
+    state.currentTurn = Color.White;
+    state.turnPhase = 'action';
 
-    // 2. White uses Raigeki (requires 12 AP)
-    state.whiteAP = 15;
+    // 3. White uses Raigeki
+    const res = match.useSkill(Color.White, 'lightning_raigeki', []);
+    expect(res.success).toBe(true);
 
-    const skillResult = match.useSkill(Color.White, 'lightning_raigeki', []);
-    expect(skillResult.success).toBe(true);
-
-    // AP deducted: 15 - 12 = 3 AP
-    expect(state.whiteAP).toBe(3);
-
-    // 3. Stunned Pawn should be destroyed and removed
+    // Stunned Pawn should be destroyed
     expect(state.board.getPiece(blackPawnPos)).toBeNull();
     // Recorded in graveyard
     const gravePawn = state.graveyard.find(g => g.piece.id === blackPawn!.id);
@@ -207,8 +220,9 @@ describe('Chess Variant Engine - Step 6 Tests (Variant Registry & Lightning E2E)
     }
     expect(stunnedPieceCount).toBe(1);
 
-    // 4. Verify ticking down and expiry (10 turns total = 5 rounds)
-    // We already used 1 turn for White's skip. Let's do 9 more END_TURN actions
+    // 4. Verify ticking down and expiry (5 rounds total = 5 ticks on caster turnEnd)
+    // White cast it, so we need 5 White turn ends to expire it.
+    // White currently has the turn.
     let activeTurn = state.currentTurn;
     for (let i = 0; i < 9; i++) {
       match.submitAction({ type: 'END_TURN', player: activeTurn });

@@ -190,7 +190,7 @@ let GameService = class GameService {
         }
         return false;
     }
-    makeMove(roomCode, playerId, from, to) {
+    makeMove(roomCode, playerId, from, to, moveType) {
         const room = this.rooms.get(roomCode);
         if (!room) {
             return { success: false, error: 'Room not found' };
@@ -204,7 +204,7 @@ let GameService = class GameService {
         }
         const fromPos = (0, game_core_1.fromAlgebraic)(from);
         const toPos = (0, game_core_1.fromAlgebraic)(to);
-        const result = room.match.makeMove(player.color, fromPos, toPos);
+        const result = room.match.makeMove(player.color, fromPos, toPos, moveType);
         if (!result.success) {
             return { success: false, error: result.reason };
         }
@@ -214,6 +214,7 @@ let GameService = class GameService {
             capturedPiece: result.capturedPiece,
             isKingCaptured: result.isKingCaptured,
             winner: room.match.getWinner() ?? undefined,
+            isStealthMove: result.isStealthMove,
         };
     }
     passSkill(roomCode, playerId) {

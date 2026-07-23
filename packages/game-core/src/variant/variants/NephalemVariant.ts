@@ -3,6 +3,7 @@ import { Color, PieceType, oppositeColor } from '../../pieces/Piece';
 import { Action } from '../../action/Action';
 import { BerserkHandler } from '../../effect/handlers/BerserkHandler';
 import { SilenceHandler } from '../../effect/handlers/SilenceHandler';
+import { APCostConfig } from '../apCostConfig';
 
 export const NephalemVariant: VariantDefinition = {
   id: 'nephalem',
@@ -33,7 +34,7 @@ export const NephalemVariant: VariantDefinition = {
       name: 'Judgment Chains',
       description: 'Chọn 1 quân địch (trừ King) để Stun trong 2 rounds.',
       tier: 'skill1',
-      apCost: 5,
+      apCost: APCostConfig.nephalem.nephalem_skill_1,
       cooldown: 0,
       usageRule: 'once_per_turn',
       getTargetRequirements: () => [{
@@ -61,8 +62,8 @@ export const NephalemVariant: VariantDefinition = {
           effect: {
             id: `stun_${targets[0].pieceId}_${Date.now()}`,
             type: 'stun',
-            duration: 3,
-            remainingDuration: 3,
+            duration: 2,
+            remainingDuration: 2,
             tickTiming: 'turnEnd',
             sourcePlayer: player,
             targetType: 'piece',
@@ -79,7 +80,7 @@ export const NephalemVariant: VariantDefinition = {
       name: 'Berserk Curse',
       description: 'Chọn 1 quân địch để nguyền rủa bằng Berserk.',
       tier: 'skill2',
-      apCost: 4,
+      apCost: APCostConfig.nephalem.nephalem_skill_2,
       cooldown: 0,
       usageRule: 'once_per_turn',
       getTargetRequirements: () => [{
@@ -111,7 +112,7 @@ export const NephalemVariant: VariantDefinition = {
             targetId: targets[0].pieceId!,
             stackingRule: 'ignore',
             isDebuff: true,
-            metadata: { captureCountdown: 2, capturedThisWindow: false, isFirstTurnStart: true },
+            metadata: { captureCountdown: 4, capturedThisWindow: false, isFirstTurnStart: true },
           }
         }];
       }
@@ -121,7 +122,7 @@ export const NephalemVariant: VariantDefinition = {
       name: 'Divine Silence',
       description: 'Câm lặng đối thủ trong 3 rounds (6 lượt).',
       tier: 'ultimate',
-      apCost: 8,
+      apCost: APCostConfig.nephalem.nephalem_ultimate,
       cooldown: 0,
       usageRule: 'once_per_turn',
       getTargetRequirements: () => [],

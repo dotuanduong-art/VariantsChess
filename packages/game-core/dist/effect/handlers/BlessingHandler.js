@@ -49,8 +49,8 @@ class BlessingHandler {
                 effect: {
                     id: `shield_${targetPiece.id}_${Date.now()}`,
                     type: 'shield',
-                    duration: 2,
-                    remainingDuration: 2,
+                    duration: 1,
+                    remainingDuration: 1,
                     tickTiming: 'turnEnd',
                     sourcePlayer: effect.sourcePlayer,
                     targetType: 'piece',

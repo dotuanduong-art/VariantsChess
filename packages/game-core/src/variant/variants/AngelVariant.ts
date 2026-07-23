@@ -4,6 +4,7 @@ import { Action } from '../../action/Action';
 import { BlessingHandler } from '../../effect/handlers/BlessingHandler';
 import { JudgmentHandler } from '../../effect/handlers/JudgmentHandler';
 import { ShieldHandler } from '../../effect/handlers/ShieldHandler';
+import { APCostConfig } from '../apCostConfig';
 
 export const AngelVariant: VariantDefinition = {
   id: 'angel',
@@ -88,7 +89,7 @@ export const AngelVariant: VariantDefinition = {
       name: 'Holy Seal',
       description: 'Stun 1 enemy piece (excluding King) for 3 rounds (6 turns).',
       tier: 'skill1',
-      apCost: 6,
+      apCost: APCostConfig.angel.angel_skill_1,
       cooldown: 0,
       usageRule: 'once_per_turn',
       getTargetRequirements: () => [{
@@ -136,7 +137,7 @@ export const AngelVariant: VariantDefinition = {
       name: 'Blessing',
       description: 'Remove all debuffs from an ally piece. If no debuffs exist, grant Shield for 1 round (2 turns).',
       tier: 'skill2',
-      apCost: 4,
+      apCost: APCostConfig.angel.angel_skill_2,
       cooldown: 0,
       usageRule: 'once_per_turn',
       getTargetRequirements: () => [{
@@ -180,7 +181,7 @@ export const AngelVariant: VariantDefinition = {
       name: 'Divine Judgment',
       description: 'Start a Judgment Window for 5 rounds (10 turns). Enemy captures in this window receive judgment mark. At window end, destroy all marked pieces.',
       tier: 'ultimate',
-      apCost: 14,
+      apCost: APCostConfig.angel.angel_ultimate,
       cooldown: 0,
       usageRule: 'once_per_turn',
       getTargetRequirements: () => [],

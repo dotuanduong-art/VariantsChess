@@ -17,10 +17,11 @@ const Piece_1 = require("../pieces/Piece");
  *
  * "Forward" is +row for White, -row for Black.
  */
-function getPawnMoves(board, pos, color) {
+function getPawnMoves(board, pos, color, allowAllyCapture, ownerColor) {
     const moves = [];
     const direction = color === Piece_1.Color.White ? 1 : -1;
     const startRow = color === Piece_1.Color.White ? 1 : 13;
+    const checkColor = ownerColor || color;
     // Forward 1
     const forward1 = { col: pos.col, row: pos.row + direction };
     if ((0, Position_1.isInBounds)(forward1) && !board.getPiece(forward1)) {
@@ -38,7 +39,7 @@ function getPawnMoves(board, pos, color) {
         const capturePos = { col: pos.col + dcol, row: pos.row + direction };
         if ((0, Position_1.isInBounds)(capturePos)) {
             const target = board.getPiece(capturePos);
-            if (target && target.color !== color) {
+            if (target && ((0, Piece_1.getPieceOwner)(target) !== checkColor || allowAllyCapture)) {
                 moves.push(capturePos);
             }
         }

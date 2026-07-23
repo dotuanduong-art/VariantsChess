@@ -13,12 +13,17 @@ export declare enum Color {
 import { Effect } from '../effect/Effect';
 export interface Piece {
     id: string;
-    type: PieceType;
+    type: PieceType | string;
     color: Color;
     effects: Effect[];
+    specialType?: string;
 }
 /**
  * Get the opponent's color
  */
 export declare function oppositeColor(color: Color): Color;
+/**
+ * Get the owner/controller of a piece, taking Walker shared control metadata into account.
+ */
+export declare function getPieceOwner(piece: Piece): Color;
 //# sourceMappingURL=Piece.d.ts.map

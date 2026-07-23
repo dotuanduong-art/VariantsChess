@@ -8,7 +8,7 @@ import { BOARD_SIZE } from '../../board/Board';
 
 export class ShieldHandler implements EffectHandler {
   effectType = 'shield' as EffectType;
-  subscribesTo: GameEventType[] = ['OnBeforePieceDestroyed'];
+  subscribesTo: GameEventType[] = ['OnBeforePieceDestroyed', 'OnTurnEnd'];
   priority = PRIORITY.BEFORE_DESTROY_SHIELD;
 
   handle(
@@ -16,6 +16,29 @@ export class ShieldHandler implements EffectHandler {
     state: Readonly<GameState>,
     enqueueAction: (action: Action) => void
   ): void {
+    if (event.type === 'OnTurnEnd') {
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const p = state.board.getPiece({ col: c, row: r });
+          if (p && p.effects) {
+            const expiredShields = p.effects.filter(
+              e => e.type === 'shield' && (e.remainingDuration ?? 0) <= 0
+            );
+            for (const shield of expiredShields) {
+              enqueueAction({
+                type: 'REMOVE_EFFECT',
+                effectId: shield.id,
+                targetId: shield.targetId,
+                targetType: 'piece',
+                reason: 'expired',
+              });
+            }
+          }
+        }
+      }
+      return;
+    }
+
     if (event.type !== 'OnBeforePieceDestroyed') return;
 
     const { pieceSnapshot, reason } = event.payload;
@@ -59,16 +82,6 @@ export class ShieldHandler implements EffectHandler {
         boardShield.metadata.lastBlockedTurnKey = turnKey;
 
         boardShield.remainingDuration = (boardShield.remainingDuration ?? 4) - 1;
-
-        if (boardShield.remainingDuration <= 0) {
-          enqueueAction({
-            type: 'REMOVE_EFFECT',
-            effectId: boardShield.id,
-            targetId: boardShield.targetId,
-            targetType: 'piece',
-            reason: 'expired',
-          });
-        }
       }
     }
   }

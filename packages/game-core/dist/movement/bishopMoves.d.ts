@@ -6,5 +6,5 @@ import { Color } from '../pieces/Piece';
  * 1. Standard diagonal sliding
  * 2. Can move exactly 1 square horizontally (left or right)
  */
-export declare function getBishopMoves(board: Board, pos: Position, color: Color): Position[];
+export declare function getBishopMoves(board: Board, pos: Position, color: Color, allowAllyCapture?: boolean): Position[];
 //# sourceMappingURL=bishopMoves.d.ts.map

@@ -7,6 +7,7 @@ import {
   Board,
   oppositeColor,
   AngelVariant,
+  Piece,
 } from 'game-core';
 
 describe('Chess Variant Engine - Angel Variant & Engine Upgrades', () => {
@@ -25,11 +26,11 @@ describe('Chess Variant Engine - Angel Variant & Engine Upgrades', () => {
     state.whiteAP = 0;
 
     // Place an ally piece to be captured
-    const allyPiece = { id: 'w_pawn_sacrificial', type: PieceType.Pawn, color: Color.White, effects: [] };
+    const allyPiece: Piece = { id: 'w_pawn_sacrificial', type: PieceType.Pawn, color: Color.White, effects: [] };
     state.board.setPiece({ col: 4, row: 4 }, allyPiece);
 
     // Place an enemy piece to capture it
-    const enemyPiece = { id: 'b_rook_attacker', type: PieceType.Rook, color: Color.Black, effects: [] };
+    const enemyPiece: Piece = { id: 'b_rook_attacker', type: PieceType.Rook, color: Color.Black, effects: [] };
     state.board.setPiece({ col: 4, row: 5 }, enemyPiece);
 
     // Set turn to Black (enemy) and perform capture
@@ -105,7 +106,7 @@ describe('Chess Variant Engine - Angel Variant & Engine Upgrades', () => {
     expect(res.success).toBe(true);
     expect(piece.effects.length).toBe(1);
     expect(piece.effects[0].type).toBe('stun');
-    expect(piece.effects[0].remainingDuration).toBe(6);
+    expect(piece.effects[0].remainingDuration).toBe(3);
   });
 
   // A5: Skill 1 — không thể dùng lên King
@@ -254,7 +255,7 @@ describe('Chess Variant Engine - Angel Variant & Engine Upgrades', () => {
     expect(res.success).toBe(true);
     const shield = piece.effects.find(e => e.type === 'shield');
     expect(shield).toBeDefined();
-    expect(shield!.remainingDuration).toBe(2);
+    expect(shield!.remainingDuration).toBe(1);
     expect(piece.effects.some(e => e.type === 'blessing')).toBe(false);
   });
 
@@ -369,11 +370,11 @@ describe('Chess Variant Engine - Angel Variant & Engine Upgrades', () => {
     match.submitAction({ type: 'END_TURN', player: Color.White });
 
     // Place an ally piece to be captured
-    const allyPiece = { id: 'w_pawn_target', type: PieceType.Pawn, color: Color.White, effects: [] };
+    const allyPiece: Piece = { id: 'w_pawn_target', type: PieceType.Pawn, color: Color.White, effects: [] };
     state.board.setPiece({ col: 4, row: 4 }, allyPiece);
 
     // Place enemy piece
-    const enemyPiece = { id: 'b_rook_attacker', type: PieceType.Rook, color: Color.Black, effects: [] };
+    const enemyPiece: Piece = { id: 'b_rook_attacker', type: PieceType.Rook, color: Color.Black, effects: [] };
     state.board.setPiece({ col: 4, row: 5 }, enemyPiece);
 
     // Black makes capture

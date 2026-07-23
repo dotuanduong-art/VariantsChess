@@ -4,6 +4,7 @@ exports.RequiemVariant = void 0;
 const Piece_1 = require("../../pieces/Piece");
 const FateHandler_1 = require("../../effect/handlers/FateHandler");
 const BerserkHandler_1 = require("../../effect/handlers/BerserkHandler");
+const apCostConfig_1 = require("../apCostConfig");
 exports.RequiemVariant = {
     id: 'requiem',
     name: 'Requiem',
@@ -36,7 +37,7 @@ exports.RequiemVariant = {
             name: 'Soul Break',
             description: 'Chọn 1 quân địch (trừ King) để nguyền rủa bằng Berserk.',
             tier: 'skill1',
-            apCost: 4,
+            apCost: apCostConfig_1.APCostConfig.requiem.requiem_skill_1,
             cooldown: 0,
             usageRule: 'once_per_turn',
             getTargetRequirements: () => [{
@@ -84,7 +85,7 @@ exports.RequiemVariant = {
             name: 'Thread of Fate',
             description: 'Liên kết sinh mệnh giữa 1 quân đồng minh và 1 quân địch. Khi 1 quân chết, quân kia cũng chết theo.',
             tier: 'skill2',
-            apCost: 6,
+            apCost: apCostConfig_1.APCostConfig.requiem.requiem_skill_2,
             cooldown: 0,
             usageRule: 'once_per_turn',
             getTargetRequirements: () => [
@@ -167,7 +168,7 @@ exports.RequiemVariant = {
             name: "Reaper's Decree",
             description: 'Gắn hiệu ứng Fate lên 2 quân địch. Khi 1 quân chết, quân kia cũng chết theo.',
             tier: 'ultimate',
-            apCost: 10,
+            apCost: apCostConfig_1.APCostConfig.requiem.requiem_ultimate,
             cooldown: 0,
             usageRule: 'once_per_turn',
             getTargetRequirements: () => [

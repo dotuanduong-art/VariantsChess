@@ -1,6 +1,7 @@
 import { OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service.js';
+import { Position } from 'game-core';
 export declare class GameGateway implements OnGatewayDisconnect {
     private readonly gameService;
     server: Server;
@@ -34,6 +35,18 @@ export declare class GameGateway implements OnGatewayDisconnect {
         playerId: string;
         from: string;
         to: string;
+        moveType?: string;
+    }): void;
+    handleSacrificePiece(client: Socket, data: {
+        roomCode: string;
+        playerId: string;
+        position: Position;
+        pieceId: string;
+    }): void;
+    handleGetEnemyPieceMoves(client: Socket, data: {
+        roomCode: string;
+        playerId: string;
+        position: Position;
     }): void;
     handleUseSkill(client: Socket, data: {
         roomCode: string;

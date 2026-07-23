@@ -313,7 +313,8 @@ export class GameService {
     roomCode: string,
     playerId: string,
     from: string,
-    to: string
+    to: string,
+    moveType?: string
   ): {
     success: boolean;
     matchState?: SerializedMatch;
@@ -321,6 +322,7 @@ export class GameService {
     capturedPiece?: { type: string; color: string };
     isKingCaptured?: boolean;
     winner?: Color;
+    isStealthMove?: boolean;
   } {
     const room = this.rooms.get(roomCode);
     if (!room) {
@@ -338,12 +340,10 @@ export class GameService {
     const fromPos = fromAlgebraic(from);
     const toPos = fromAlgebraic(to);
 
-    const result = room.match.makeMove(player.color, fromPos, toPos);
+    const result = room.match.makeMove(player.color, fromPos, toPos, moveType);
     if (!result.success) {
       return { success: false, error: result.reason };
     }
-
-
 
     return {
       success: true,
@@ -351,6 +351,7 @@ export class GameService {
       capturedPiece: result.capturedPiece,
       isKingCaptured: result.isKingCaptured,
       winner: room.match.getWinner() ?? undefined,
+      isStealthMove: result.isStealthMove,
     };
   }
 

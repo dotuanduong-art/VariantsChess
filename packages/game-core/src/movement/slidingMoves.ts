@@ -4,7 +4,8 @@
 
 import { Board } from '../board/Board';
 import { Position, isInBounds } from '../board/Position';
-import { Color } from '../pieces/Piece';
+import { Color, getPieceOwner } from '../pieces/Piece';
+import { isSlidingBlocked } from '../modifier/CellEffectBlockModifier';
 
 /**
  * Generate moves in a single direction until hitting a boundary or piece.
@@ -15,7 +16,8 @@ export function getSlidingMoves(
   board: Board,
   pos: Position,
   color: Color,
-  directions: { dcol: number; drow: number }[]
+  directions: { dcol: number; drow: number }[],
+  allowAllyCapture?: boolean
 ): Position[] {
   const moves: Position[] = [];
 
@@ -23,12 +25,12 @@ export function getSlidingMoves(
     let current: Position = { col: pos.col + dcol, row: pos.row + drow };
 
     while (isInBounds(current)) {
-      if (board.getCellEffects(current).some(e => e.type === 'mountain')) {
-        break; // Blocked by mountain
+      if (isSlidingBlocked(board, current, color)) {
+        break; // Blocked by cell effect or special piece obstacle
       }
       const piece = board.getPiece(current);
       if (piece) {
-        if (piece.color !== color) {
+        if (getPieceOwner(piece) !== color || allowAllyCapture) {
           moves.push({ ...current }); // capture
         }
         break; // blocked

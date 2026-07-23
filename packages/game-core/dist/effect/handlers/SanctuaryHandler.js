@@ -25,8 +25,8 @@ class SanctuaryHandler {
                 effect: {
                     id: `stun_sanctuary_${attackerPiece.id}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
                     type: 'stun',
-                    duration: 4,
-                    remainingDuration: 4,
+                    duration: 2,
+                    remainingDuration: 2,
                     tickTiming: 'turnEnd',
                     sourcePlayer: sanctuary.sourcePlayer,
                     targetType: 'piece',

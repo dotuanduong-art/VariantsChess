@@ -12,7 +12,8 @@ import {
   PRIORITY,
   EffectHandler,
   GameEvent,
-  Action
+  Action,
+  Piece
 } from 'game-core';
 
 describe('Chess Variant Engine - Dynamite Variant & Engine Upgrades', () => {
@@ -535,7 +536,7 @@ describe('Chess Variant Engine - Dynamite Variant & Engine Upgrades', () => {
     state.board.addCellEffect(landminePos, landmineEffect);
 
     // Place Black Rook at E6
-    const blackRook = { id: 'b_rook', type: PieceType.Rook, color: Color.Black, effects: [] };
+    const blackRook: Piece = { id: 'b_rook', type: PieceType.Rook, color: Color.Black, effects: [] };
     state.board.setPiece(attackerPos, blackRook);
 
     // Black moves to E5

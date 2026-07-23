@@ -4,7 +4,7 @@
 
 import { Board } from '../board/Board';
 import { Position, isInBounds, posEquals } from '../board/Position';
-import { Color } from '../pieces/Piece';
+import { Color, getPieceOwner } from '../pieces/Piece';
 import { getLegalMoves } from '../movement/MoveGenerator';
 import { GameState } from '../state/GameState';
 import { MoveModifierChain } from '../modifier/MoveModifierChain';
@@ -55,7 +55,7 @@ export function validateMove(
   }
 
   // Check piece ownership
-  if (piece.color !== playerColor) {
+  if (getPieceOwner(piece) !== playerColor) {
     return { valid: false, reason: 'That piece does not belong to you' };
   }
 

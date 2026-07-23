@@ -1,0 +1,1 @@
+{"version":3,"file":"AegisHandler.d.ts","sourceRoot":"","sources":["../../../src/effect/handlers/AegisHandler.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,aAAa,EAAE,MAAM,kBAAkB,CAAC;AACjD,OAAO,EAAE,UAAU,EAAE,MAAM,WAAW,CAAC;AAEvC,qBAAa,YAAa,YAAW,aAAa;IAChD,UAAU,EAAc,UAAU,CAAC;IACnC,YAAY,UAAM;IAElB,MAAM,IAAI,IAAI;CACf"}

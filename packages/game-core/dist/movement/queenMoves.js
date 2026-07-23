@@ -15,7 +15,7 @@ const ALL_DIRECTIONS = [
     { dcol: -1, drow: 1 },
     { dcol: -1, drow: -1 },
 ];
-function getQueenMoves(board, pos, color) {
-    return (0, slidingMoves_1.getSlidingMoves)(board, pos, color, ALL_DIRECTIONS);
+function getQueenMoves(board, pos, color, allowAllyCapture) {
+    return (0, slidingMoves_1.getSlidingMoves)(board, pos, color, ALL_DIRECTIONS, allowAllyCapture);
 }
 //# sourceMappingURL=queenMoves.js.map

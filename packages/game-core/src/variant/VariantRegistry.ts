@@ -4,6 +4,7 @@ import { EffectRegistry } from '../effect/EffectRegistry';
 import { EventBus } from '../event/EventBus';
 import { MoveModifierChain } from '../modifier/MoveModifierChain';
 import { GameState } from '../state/GameState';
+import { ActionPipeline } from '../action/ActionPipeline';
 
 export class VariantRegistry {
   private variants: Map<string, VariantDefinition> = new Map();
@@ -33,7 +34,8 @@ export class VariantRegistry {
     effectRegistry: EffectRegistry,
     eventBus: EventBus,
     moveModifierChain: MoveModifierChain,
-    state: GameState
+    state: GameState,
+    pipeline?: ActionPipeline
   ): void {
     const variant = this.get(variantId);
     if (!variant) {
@@ -106,6 +108,13 @@ export class VariantRegistry {
         ...state.variantState,
         ...variant.getInitialState(),
       };
+    }
+
+    // 6. Register action validators (e.g. ThunderFangCaptureValidator)
+    if (pipeline && variant.actionValidators) {
+      for (const validator of variant.actionValidators) {
+        pipeline.addValidator(validator);
+      }
     }
 
     this.loadedVariants.set(loadKey, { player, variantId });

@@ -443,7 +443,7 @@ describe('Chess Variant Engine - Nephalem Variant & Engine Upgrades', () => {
     const berserk = piece.effects.find(e => e.type === 'berserk');
 
     expect(stun).toBeDefined();
-    expect(stun!.remainingDuration).toBe(6);
+    expect(stun!.remainingDuration).toBe(3);
     expect(berserk).toBeUndefined();
   });
 
@@ -550,7 +550,7 @@ describe('Chess Variant Engine - Nephalem Variant & Engine Upgrades', () => {
     match.submitAction({ type: 'END_TURN', player: Color.White });
 
     expect(piece.effects.some(e => e.type === 'stun')).toBe(true);
-    expect(piece.effects.find(e => e.type === 'stun')!.remainingDuration).toBe(6);
+    expect(piece.effects.find(e => e.type === 'stun')!.remainingDuration).toBe(3);
     expect(piece.effects.some(e => e.type === 'berserk')).toBe(false);
   });
 

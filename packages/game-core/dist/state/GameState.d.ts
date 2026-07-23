@@ -4,7 +4,16 @@ import { MatchStatus } from '../match/Match';
 import { ActionHistory } from '../action/ActionHistory';
 import { GraveyardEntry } from './Graveyard';
 import { Effect } from '../effect/Effect';
+import { Position } from '../board/Position';
 export type TurnPhase = 'start' | 'action' | 'resolution' | 'end' | 'cleanup';
+export interface PositionSnapshot {
+    turnNumber: number;
+    player: Color;
+    positions: {
+        pieceId: string;
+        position: Position;
+    }[];
+}
 export interface SerializedGameState {
     board: SerializedBoard;
     currentTurn: Color;
@@ -14,6 +23,7 @@ export interface SerializedGameState {
     turnPhase: TurnPhase;
     hasMoved: boolean;
     skillsUsedThisTurn: number;
+    skillsUsedThisTurnIds: string[];
     passSkillSubmitted: boolean;
     whiteAP: number;
     blackAP: number;
@@ -30,6 +40,7 @@ export interface SerializedGameState {
     pendingDeadKings: Color[];
     whitePlayerEffects: Effect[];
     blackPlayerEffects: Effect[];
+    positionSnapshots?: PositionSnapshot[];
 }
 export declare class GameState {
     board: Board;
@@ -40,6 +51,7 @@ export declare class GameState {
     turnPhase: TurnPhase;
     hasMoved: boolean;
     skillsUsedThisTurn: number;
+    skillsUsedThisTurnIds: string[];
     passSkillSubmitted: boolean;
     whiteAP: number;
     blackAP: number;
@@ -56,6 +68,7 @@ export declare class GameState {
     pendingDeadKings: Color[];
     whitePlayerEffects: Effect[];
     blackPlayerEffects: Effect[];
+    positionSnapshots: PositionSnapshot[];
     constructor(rngSeed?: number);
     getPlayerEffects(player: Color): Effect[];
     addPlayerEffect(player: Color, effect: Effect): void;

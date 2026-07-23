@@ -7,10 +7,11 @@ import { MoveModifier } from '../../modifier/MoveModifier';
 export declare class StunHandler implements EffectHandler {
     effectType: EffectType;
     subscribesTo: GameEventType[];
+    constructor(effectType?: EffectType);
     handle(event: GameEvent, state: Readonly<GameState>, enqueueAction: (action: Action) => void): void;
-    /** Block movement of stunned pieces */
+    /** Block movement of stunned/rooted pieces */
     validateAction(action: Action, activeEffects: Effect[], state: Readonly<GameState>): string | null;
-    /** Stunned pieces have no legal moves */
+    /** Stunned/rooted pieces have no legal moves */
     getMoveModifier(effect: Effect, state: Readonly<GameState>): MoveModifier | null;
 }
 //# sourceMappingURL=StunHandler.d.ts.map

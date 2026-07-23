@@ -12,6 +12,7 @@ export type EffectKey =
   | 'shield'
   | 'bomb'
   | 'zombie'
+  | 'walker'
   | 'berserk'
   | 'blessing'
   | 'flame'
@@ -19,7 +20,14 @@ export type EffectKey =
   | 'ghost'
   | 'bind'
   | 'judgment_mark'
-  | 'fate';
+  | 'fate'
+  | 'position_swap'
+  | 'moveset_swap'
+  | 'fool'
+  | 'enemy_position_swap'
+  | 'puppet_control'
+  | 'puppet_no_capture'
+  | 'ascend';
 
 interface EffectConfig {
   filter: string;
@@ -41,6 +49,10 @@ const EFFECTS: Record<EffectKey, EffectConfig> = {
   },
   zombie: {
     filter: 'grayscale(20%) hue-rotate(80deg) saturate(1.3) brightness(0.9)',
+  },
+  walker: {
+    filter: 'drop-shadow(0px 0px 8px rgba(20, 184, 166, 0.85)) saturate(1.4) hue-rotate(60deg) brightness(0.95)',
+    opacity: 0.6,
   },
   berserk: {
     filter: 'drop-shadow(0px 0px 10px rgba(220, 38, 38, 0.95)) saturate(2) contrast(1.15)',
@@ -68,6 +80,32 @@ const EFFECTS: Record<EffectKey, EffectConfig> = {
   },
   fate: {
     filter: 'drop-shadow(0px 0px 8px rgba(168, 85, 247, 0.95)) saturate(1.5)',
+  },
+  position_swap: {
+    filter: 'drop-shadow(0px 0px 8px rgba(34, 211, 238, 0.8))',
+    animation: 'effect-position-swap-glow 1.5s infinite alternate ease-in-out',
+  },
+  moveset_swap: {
+    filter: 'drop-shadow(0px 0px 8px rgba(236, 72, 153, 0.8))',
+    animation: 'effect-moveset-swap-glow 1.5s infinite alternate ease-in-out',
+  },
+  fool: {
+    filter: 'drop-shadow(0px 0px 10px rgba(168, 85, 247, 0.9)) saturate(1.7) contrast(1.1)',
+    animation: 'effect-fool-glow 1.5s infinite alternate ease-in-out',
+  },
+  enemy_position_swap: {
+    filter: 'drop-shadow(0px 0px 8px rgba(168, 85, 247, 0.8))',
+    animation: 'effect-enemy-position-swap-glow 1.5s infinite alternate ease-in-out',
+  },
+  ascend: {
+    filter: 'drop-shadow(0px 0px 8px rgba(234, 179, 8, 0.9)) saturate(1.4) brightness(1.15)',
+    animation: 'effect-ascend-pulse 1.8s infinite alternate ease-in-out',
+  },
+  puppet_control: {
+    filter: 'drop-shadow(0px 0px 10px rgba(168, 85, 247, 0.95)) saturate(1.4) brightness(1.15)',
+  },
+  puppet_no_capture: {
+    filter: 'grayscale(40%) drop-shadow(0px 0px 6px rgba(220, 38, 38, 0.6))',
   },
 };
 
@@ -123,7 +161,13 @@ export default function Piece({ piece, variant = 'classic' }: PieceProps) {
 
   const pieceTypeStr = piece.type.toLowerCase();
   const colorStr = piece.color.toLowerCase();
-  const imageSrc = `/pieces/${variant}/${colorStr}_${pieceTypeStr}.png`;
+  
+  let imageSrc = `/pieces/${variant}/${colorStr}_${pieceTypeStr}.png`;
+  if (pieceTypeStr === 'totem') {
+    imageSrc = `/assets/pieces/cherubim/${colorStr}_totem.png`;
+  } else if (pieceTypeStr === 'mountain') {
+    imageSrc = `/assets/pieces/earth/${colorStr}_mountain.png`;
+  }
 
   // Fallback text if image is missing (first letter of piece type)
   const fallbackText = piece.type.charAt(0).toUpperCase();
@@ -133,6 +177,13 @@ export default function Piece({ piece, variant = 'classic' }: PieceProps) {
     .filter(type => type in EFFECTS);
 
   const combinedStyle = getCombinedEffectStyle(activeEffects);
+
+  const ghostEffect = piece.effects?.find(e => e.type === 'ghost');
+  const isStealthed = ghostEffect?.metadata?.stealth === true;
+  if (isStealthed) {
+    combinedStyle.opacity = 0.35;
+    combinedStyle.filter = (combinedStyle.filter || '') + ' saturate(0.5) contrast(0.8) drop-shadow(0px 0px 12px rgba(168, 85, 247, 0.6))';
+  }
  
   return (
     <motion.div 

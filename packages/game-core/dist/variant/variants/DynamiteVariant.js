@@ -4,6 +4,7 @@ exports.DynamiteVariant = void 0;
 const Piece_1 = require("../../pieces/Piece");
 const BombHandler_1 = require("../../effect/handlers/BombHandler");
 const LandmineHandler_1 = require("../../effect/handlers/LandmineHandler");
+const apCostConfig_1 = require("../apCostConfig");
 exports.DynamiteVariant = {
     id: 'dynamite',
     name: 'Dynamite',
@@ -20,7 +21,7 @@ exports.DynamiteVariant = {
             name: 'Live Charge',
             description: 'Attach a bomb effect to an ally piece (excluding King).',
             tier: 'skill1',
-            apCost: 3,
+            apCost: apCostConfig_1.APCostConfig.dynamite.dynamite_skill_1,
             cooldown: 0,
             usageRule: 'once_per_turn',
             getTargetRequirements: () => [{
@@ -74,7 +75,7 @@ exports.DynamiteVariant = {
             name: 'Landmine',
             description: 'Place a Landmine on an empty square.',
             tier: 'skill2',
-            apCost: 3,
+            apCost: apCostConfig_1.APCostConfig.dynamite.dynamite_skill_2,
             cooldown: 0,
             usageRule: 'once_per_turn',
             getTargetRequirements: () => [{
@@ -124,7 +125,7 @@ exports.DynamiteVariant = {
             name: 'Detonation',
             description: 'Detonate all bombs, triggering explosions.',
             tier: 'ultimate',
-            apCost: 9,
+            apCost: apCostConfig_1.APCostConfig.dynamite.dynamite_ultimate,
             cooldown: 0,
             usageRule: 'once_per_turn',
             getTargetRequirements: () => [],

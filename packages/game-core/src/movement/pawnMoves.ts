@@ -4,7 +4,7 @@
 
 import { Board } from '../board/Board';
 import { Position, isInBounds } from '../board/Position';
-import { Color } from '../pieces/Piece';
+import { Color, getPieceOwner } from '../pieces/Piece';
 
 /**
  * Get legal moves for a pawn at the given position.
@@ -17,10 +17,11 @@ import { Color } from '../pieces/Piece';
  *
  * "Forward" is +row for White, -row for Black.
  */
-export function getPawnMoves(board: Board, pos: Position, color: Color): Position[] {
+export function getPawnMoves(board: Board, pos: Position, color: Color, allowAllyCapture?: boolean, ownerColor?: Color): Position[] {
   const moves: Position[] = [];
   const direction = color === Color.White ? 1 : -1;
   const startRow = color === Color.White ? 1 : 13;
+  const checkColor = ownerColor || color;
 
   // Forward 1
   const forward1: Position = { col: pos.col, row: pos.row + direction };
@@ -41,7 +42,7 @@ export function getPawnMoves(board: Board, pos: Position, color: Color): Positio
     const capturePos: Position = { col: pos.col + dcol, row: pos.row + direction };
     if (isInBounds(capturePos)) {
       const target = board.getPiece(capturePos);
-      if (target && target.color !== color) {
+      if (target && (getPieceOwner(target) !== checkColor || allowAllyCapture)) {
         moves.push(capturePos);
       }
     }
